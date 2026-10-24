@@ -4098,6 +4098,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   const SM = {
     SCHEMA_VERSION: 1,
     LS_CURRENT: 'sargozasht.current.v1',
+    SS_CURRENT: 'sargozasht.session.current.v1',
     LS_BACKUP: 'sargozasht.current.bak',
     LS_SETTINGS: 'sargozasht.settings',
     LS_ARCHIVE: 'sargozasht.archive', // جایگزین localStorage وقتی IndexedDB نیست
@@ -4163,22 +4164,22 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
 
   SM.saveCurrent = function (state) {
     if (!state || !state.lifeId) return false;
-    let stateJSON, json, now = Date.now(), localSaved = false;
+    let stateJSON, json, now = Date.now(), localSaved = false, sessionSaved = false;
     try {
       stateJSON = JSON.stringify(state);
-      if (SM._lastStateJSON === stateJSON) {
-        const existing = SM.loadCurrent();
-        if (existing && existing.state && JSON.stringify(existing.state) === stateJSON) {
-          /* snapshot یکسان است؛ از نو نوشتن چند نسخهٔ بزرگ بی‌دلیل جلوگیری کن. */
-          if (SM._pendingCurrentJSON) SM._scheduleIDBCurrent(SM._pendingCurrentJSON);
-          return true;
-        }
-        /* اگر نوشتن قبلی به دلیل سهمیهٔ مرورگر شکست خورده باشد، تلاش را تکرار کن. */
+      const existing = SM.loadCurrent();
+      if (SM._lastStateJSON === stateJSON && existing && existing.state && JSON.stringify(existing.state) === stateJSON) {
+        if (SM._pendingCurrentJSON) SM._scheduleIDBCurrent(SM._pendingCurrentJSON);
+        return true;
       }
       json = JSON.stringify({ v: SM.SCHEMA_VERSION, at: new Date().toISOString(), state: state });
+
+      // یک نسخهٔ هم‌زمان در sessionStorage نگه دار تا اگر localStorage به سقف فضا خورد،
+      // با refresh همان تب امکان بازیابی وجود داشته باشد.
+      try { sessionStorage.setItem(SM.SS_CURRENT, json); sessionSaved = true; } catch (sessionErr) {}
+
       let cur = null;
-      try { cur = localStorage.getItem(SM.LS_CURRENT); } catch (readErr) { /* شاید فقط نوشتن در دسترس باشد */ }
-      /* پشتیبان فقط گهگاه می‌چرخد؛ خطای پشتیبان نباید ذخیرهٔ اصلی را متوقف کند. */
+      try { cur = localStorage.getItem(SM.LS_CURRENT); } catch (readErr) {}
       if (cur && (!SM._lastBackupAt || now - SM._lastBackupAt >= 30000)) {
         try {
           const b1 = localStorage.getItem(SM.LS_BACKUP);
@@ -4188,21 +4189,46 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
           localStorage.setItem(SM.LS_BACKUP, cur);
           SM._lastBackupAt = now;
         } catch (backupErr) {
-          try { localStorage.removeItem(SM.LS_BACKUP + '.3'); } catch (ignoreBackupErr) {}
+          // ذخیرهٔ جدید مهم‌تر از چرخاندن نسخه‌های پشتیبان است.
         }
       }
+
       try { localStorage.setItem(SM.LS_CURRENT, json); localSaved = true; }
       catch (primaryErr) {
-        /* آزادکردن قدیمی‌ترین نسخه؛ current قبلی تا زمان موفقیت پاک نمی‌شود. */
-        try { localStorage.removeItem(SM.LS_BACKUP + '.3'); localStorage.setItem(SM.LS_CURRENT, json); localSaved = true; }
-        catch (retryErr) { try { localStorage.removeItem(SM.LS_BACKUP + '.2'); localStorage.setItem(SM.LS_CURRENT, json); localSaved = true; } catch (retryErr2) { SM.lastError = retryErr2 && retryErr2.message || 'فضای ذخیرهٔ مرورگر کافی نیست'; } }
+        // current قدیمی را دست نزن؛ فقط نسخه‌های پشتیبان را یکی‌یکی حذف و دوباره امتحان کن.
+        const staleKeys = [SM.LS_BACKUP + '.3', SM.LS_BACKUP + '.2', SM.LS_BACKUP];
+        for (let i = 0; i < staleKeys.length && !localSaved; i++) {
+          try { localStorage.removeItem(staleKeys[i]); } catch (removeErr) {}
+          try { localStorage.setItem(SM.LS_CURRENT, json); localSaved = true; } catch (retryErr) {}
+        }
+        if (!localSaved) SM.lastError = primaryErr && primaryErr.message || 'ذخیره در localStorage انجام نشد';
       }
-      SM._lastStateJSON = stateJSON;
-      SM._scheduleIDBCurrent(json);
-      SM.lastSavedAt = now;
-      if (localSaved) SM.lastError = null;
-      return localSaved || SM.idbAvailable || !SM.idbInitFinished;
-    } catch (e) { SM.lastError = e && e.message || 'ذخیرهٔ زندگی ناموفق بود'; return false; }
+
+      // IndexedDB هم به‌عنوان نسخهٔ پایدار نوشته می‌شود. اگر localStorage موفق نبود،
+      // نوشتن را معطل تایمر ۷۰۰ میلی‌ثانیه‌ای نکن.
+      SM._pendingCurrentJSON = json;
+      if (SM.idbAvailable && !localSaved) {
+        if (SM._idbSaveTimer) { clearTimeout(SM._idbSaveTimer); SM._idbSaveTimer = null; }
+        SM._writeIDBCurrent(json).then(function (ok) {
+          if (ok) { SM._lastStateJSON = stateJSON; SM.lastError = null; }
+          else SM.lastError = SM.lastError || 'ذخیره در IndexedDB انجام نشد';
+        });
+      } else {
+        SM._scheduleIDBCurrent(json);
+      }
+
+      if (localSaved || sessionSaved) {
+        SM._lastStateJSON = stateJSON;
+        SM.lastSavedAt = now;
+        if (localSaved) SM.lastError = null;
+        return true;
+      }
+      SM.lastError = SM.lastError || 'ذخیره انجام نشد؛ فضای ذخیره‌سازی مرورگر در دسترس نیست';
+      return false;
+    } catch (e) {
+      SM.lastError = e && e.message || 'ذخیرهٔ زندگی ناموفق بود';
+      return false;
+    }
   };
 
   SM.loadCurrentAsync = function () {
@@ -4220,8 +4246,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
             if (parsed && parsed.v === SM.SCHEMA_VERSION && parsed.state && parsed.state.lifeId) saved = parsed;
           }
           const localRaw = (function(){try{return localStorage.getItem(SM.LS_CURRENT);}catch(e){return null;}})();
+          const sessionRaw = (function(){try{return sessionStorage.getItem(SM.SS_CURRENT);}catch(e){return null;}})();
           const localParsed = SM._safeParse(localRaw);
-          const localAt = localParsed && Date.parse(localParsed.at || '') || 0;
+          const sessionParsed = SM._safeParse(sessionRaw);
+          const localAt = Math.max(localParsed && Date.parse(localParsed.at || '') || 0, sessionParsed && Date.parse(sessionParsed.at || '') || 0);
           const idbAt = saved && Date.parse(saved.at || rec.savedAt || '') || 0;
           if (saved && (!local || !local.state || idbAt > localAt)) {
             try { localStorage.setItem(SM.LS_CURRENT, JSON.stringify(saved)); } catch (e) { /* نسخهٔ IDB برای بازیابی کافی است */ }
@@ -4235,39 +4263,50 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   };
 
   SM.loadCurrent = function () {
-    let raw = null;
-    try { raw = localStorage.getItem(SM.LS_CURRENT); } catch (e) { return null; }
-    if (!raw) {
-      // اگر کلید اصلی حذف شده ولی نسخه‌های پشتیبان مانده‌اند، آخرین نسخهٔ سالم را بازیابی کن.
-      const keys = [SM.LS_BACKUP, SM.LS_BACKUP + '.2', SM.LS_BACKUP + '.3'];
-      for (let i = 0; i < keys.length; i++) {
-        const candidate = SM._safeParse((function (key) { try { return localStorage.getItem(key); } catch (e) { return null; } })(keys[i]));
-        if (candidate && candidate.v === SM.SCHEMA_VERSION && candidate.state && candidate.state.lifeId) {
-          try { localStorage.setItem(SM.LS_CURRENT, JSON.stringify(candidate)); } catch (e) { /* بازیابی در حافظه */ }
-          return { state: candidate.state, recovered: true };
-        }
-      }
-      return null;
+    const valid = function (p) { return !!(p && p.v === SM.SCHEMA_VERSION && p.state && p.state.lifeId); };
+    const read = function (store, key) {
+      try { return store.getItem(key); } catch (e) { return null; }
+    };
+    const parsedLocal = SM._safeParse(read(localStorage, SM.LS_CURRENT));
+    const parsedSession = SM._safeParse(read(sessionStorage, SM.SS_CURRENT));
+    const localOK = valid(parsedLocal), sessionOK = valid(parsedSession);
+    const stamp = function (p) { const n = Date.parse(p && p.at || ''); return Number.isFinite(n) ? n : 0; };
+
+    // اگر localStorage قدیمی‌تر از نسخهٔ همین تب باشد، آخرین وضعیت را برگردان.
+    if (localOK && sessionOK && stamp(parsedSession) > stamp(parsedLocal)) {
+      try { localStorage.setItem(SM.LS_CURRENT, JSON.stringify(parsedSession)); } catch (e) {}
+      return { state: parsedSession.state, recovered: true, source: 'sessionStorage' };
     }
-    const parsed = SM._safeParse(raw);
-    if (!parsed || parsed.v !== SM.SCHEMA_VERSION || !parsed.state || !parsed.state.lifeId) {
-      /* تلاش برای پشتیبان */
-      const backups = [SM.LS_BACKUP, SM.LS_BACKUP + '.2', SM.LS_BACKUP + '.3'];
-      for (let bi = 0; bi < backups.length; bi++) {
-        const bak = SM._safeParse((function (key) { try { return localStorage.getItem(key); } catch (e) { return null; } })(backups[bi]));
-        if (bak && bak.v === SM.SCHEMA_VERSION && bak.state && bak.state.lifeId) {
-          try { localStorage.setItem(SM.LS_CURRENT, JSON.stringify(bak)); } catch (e) { /* بازیابی در حافظه انجام می‌شود */ }
-          return { state: bak.state, recovered: true };
-        }
-      }
-      try { localStorage.removeItem(SM.LS_CURRENT); } catch (e) { /* خالی */ }
+    if (localOK) return { state: parsedLocal.state, recovered: false };
+
+    // اگر کلید اصلی حذف/خراب شده یا دسترسی به آن محدود است، اول نسخهٔ session را بازیابی کن.
+    if (sessionOK) {
+      try { localStorage.setItem(SM.LS_CURRENT, JSON.stringify(parsedSession)); } catch (e) {}
+      return { state: parsedSession.state, recovered: true, source: 'sessionStorage' };
+    }
+
+    const keys = [SM.LS_BACKUP, SM.LS_BACKUP + '.2', SM.LS_BACKUP + '.3'];
+    const backups = [];
+    for (let i = 0; i < keys.length; i++) {
+      const candidate = SM._safeParse(read(localStorage, keys[i]));
+      if (valid(candidate)) backups.push(candidate);
+    }
+    backups.sort(function (a, b) { return stamp(b) - stamp(a); });
+    if (backups.length) {
+      try { localStorage.setItem(SM.LS_CURRENT, JSON.stringify(backups[0])); } catch (e) {}
+      return { state: backups[0].state, recovered: true, source: 'backup' };
+    }
+
+    if (read(localStorage, SM.LS_CURRENT)) {
+      try { localStorage.removeItem(SM.LS_CURRENT); } catch (e) {}
       return { state: null, recovered: false, corrupt: true };
     }
-    return { state: parsed.state, recovered: false };
+    return null;
   };
 
   SM.clearCurrent = function () {
     try { localStorage.removeItem(SM.LS_CURRENT); localStorage.removeItem(SM.LS_BACKUP); localStorage.removeItem(SM.LS_BACKUP + '.2'); localStorage.removeItem(SM.LS_BACKUP + '.3'); } catch (e) { /* خالی */ }
+    try { sessionStorage.removeItem(SM.SS_CURRENT); } catch (sessionErr) {}
     SM._lastStateJSON = null; SM._pendingCurrentJSON = null; SM._lastBackupAt = 0;
     if (SM._idbSaveTimer) { clearTimeout(SM._idbSaveTimer); SM._idbSaveTimer = null; }
     if (SM.idbAvailable && SM.db && SM.db.objectStoreNames.contains('current')) {
