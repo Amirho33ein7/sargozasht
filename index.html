@@ -4264,11 +4264,14 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
 
   SM.loadCurrent = function () {
     const valid = function (p) { return !!(p && p.v === SM.SCHEMA_VERSION && p.state && p.state.lifeId); };
-    const read = function (store, key) {
-      try { return store.getItem(key); } catch (e) { return null; }
+    const read = function (kind, key) {
+      try {
+        const store = kind === 'session' ? window.sessionStorage : window.localStorage;
+        return store.getItem(key);
+      } catch (e) { return null; }
     };
-    const parsedLocal = SM._safeParse(read(localStorage, SM.LS_CURRENT));
-    const parsedSession = SM._safeParse(read(sessionStorage, SM.SS_CURRENT));
+    const parsedLocal = SM._safeParse(read('local', SM.LS_CURRENT));
+    const parsedSession = SM._safeParse(read('session', SM.SS_CURRENT));
     const localOK = valid(parsedLocal), sessionOK = valid(parsedSession);
     const stamp = function (p) { const n = Date.parse(p && p.at || ''); return Number.isFinite(n) ? n : 0; };
 
@@ -4288,7 +4291,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     const keys = [SM.LS_BACKUP, SM.LS_BACKUP + '.2', SM.LS_BACKUP + '.3'];
     const backups = [];
     for (let i = 0; i < keys.length; i++) {
-      const candidate = SM._safeParse(read(localStorage, keys[i]));
+      const candidate = SM._safeParse(read('local', keys[i]));
       if (valid(candidate)) backups.push(candidate);
     }
     backups.sort(function (a, b) { return stamp(b) - stamp(a); });
@@ -4297,7 +4300,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
       return { state: backups[0].state, recovered: true, source: 'backup' };
     }
 
-    if (read(localStorage, SM.LS_CURRENT)) {
+    if (read('local', SM.LS_CURRENT)) {
       try { localStorage.removeItem(SM.LS_CURRENT); } catch (e) {}
       return { state: null, recovered: false, corrupt: true };
     }
