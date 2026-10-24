@@ -15,7 +15,7 @@
 
 ## اجرای بازی
 
-**[اجرای مستقیم بازی سرگذشت](https://cdn.jsdelivr.net/gh/Amirho33ein7/sargozasht@main/index.html)**
+**[اجرای مستقیم بازی سرگذشت](https://htmlpreview.github.io/?https://github.com/Amirho33ein7/sargozasht/blob/main/index.html)**
 
 > لینک مستقیم بالا از فایل HTML مخزن سرو می‌شود. برای نشانی رسمی `github.io`، باید یک‌بار GitHub Pages را در Settings → Pages فعال و Source را روی GitHub Actions تنظیم کرد؛ ساخت خودکار سایت از گردش‌کار به‌دلیل محدودیت دسترسی GitHub مسدود شده است.
 
