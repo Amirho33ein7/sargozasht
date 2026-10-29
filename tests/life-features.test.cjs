@@ -269,10 +269,10 @@ test('the actual event engine generates varied sequences for different births an
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const marker = html.indexOf('/* سرگذشت — event-engine.js');
   assert.ok(marker >= 0, 'existing EventEngine source marker must exist');
-  const scriptOpen = html.indexOf('<script>', marker);
-  const codeStart = html.indexOf('(function () {', scriptOpen);
+  const scriptOpen = html.lastIndexOf('<script>', marker);
+  const codeStart = html.indexOf('(function () {', marker);
   const codeEnd = html.indexOf('</script>', codeStart);
-  assert.ok(scriptOpen >= 0 && codeStart > scriptOpen && codeEnd > codeStart, 'event engine script boundaries must be valid');
+  assert.ok(scriptOpen >= 0 && codeStart > marker && codeEnd > codeStart, 'event engine script boundaries must be valid');
   const source = html.slice(codeStart, codeEnd);
 
   const LS = {
@@ -370,7 +370,7 @@ test('the actual event engine generates varied sequences for different births an
 
 test('the scenario loader runs after built-in events are composed and before the feature module', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  const scenarioLoader = '<script src="./life-scenarios.js?v=20261030-life-scenarios-1"></script>';
+  const scenarioLoader = '<script src="./life-scenarios.js?v=20261030-life-scenarios-2"></script>';
   const featureLoader = '<script src="./life-features.js?v=20261030-portrait-stable"></script>';
   const eventsComposed = html.indexOf('LS.events = (LS._eventsA || []).concat(LS._eventsB || []);');
   const scenarioAt = html.indexOf(scenarioLoader);
