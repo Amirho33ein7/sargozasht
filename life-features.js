@@ -436,6 +436,63 @@
     return !!person && person.alive !== false;
   }
 
+  function surnameOf(person) {
+    if (!person) return '';
+    var stored = typeof person.last === 'string' ? person.last.trim() : '';
+    if (stored) return stored;
+    var full = String(person.full || person.name || '').trim();
+    if (!full) return '';
+    var pieces = full.split(/\s+/);
+    return pieces.length > 1 ? pieces[pieces.length - 1] : '';
+  }
+
+  function childNameWithFatherSurname(state, generatedFullName) {
+    state = state || {};
+    var family = state.family || {};
+    var partner = family.partner || null;
+    var protagonist = state.name || {};
+    var father = null;
+    var fatherSource = 'player';
+
+    if (String(state.gender || '').toLowerCase() === 'male') {
+      father = protagonist;
+      fatherSource = 'player';
+    } else if (partner && String(partner.gender || '').toLowerCase() === 'male') {
+      father = { full: partner.name || partner.full || '', last: partner.last || '' };
+      fatherSource = 'partner';
+    } else if (protagonist && surnameOf(protagonist)) {
+      // Defensive fallback for old/imported saves with missing or non-binary partner data.
+      father = protagonist;
+      fatherSource = 'player-fallback';
+    } else if (partner) {
+      father = { full: partner.name || partner.full || '', last: partner.last || '' };
+      fatherSource = 'partner-fallback';
+    }
+
+    var surname = surnameOf(father);
+    var original = String(generatedFullName == null ? '' : generatedFullName).trim().replace(/\s+/g, ' ');
+    if (!surname || !original) {
+      return {
+        full: original,
+        surname: surname,
+        fatherName: father ? String(father.full || father.name || '').trim() : '',
+        fatherSource: fatherSource
+      };
+    }
+    var tokens = original.split(/\s+/);
+    var given = tokens.length > 1 ? tokens.slice(0, -1).join(' ') : tokens[0];
+    // Avoid duplicate surname if a generated name already ends with the father's surname.
+    var full = tokens.length > 1 && tokens[tokens.length - 1] === surname
+      ? original
+      : given + ' ' + surname;
+    return {
+      full: full,
+      surname: surname,
+      fatherName: father ? String(father.full || father.name || '').trim() : '',
+      fatherSource: fatherSource
+    };
+  }
+
   function travelerCount(mode, state) {
     state = state || {};
     var family = state.family || {};
@@ -904,6 +961,8 @@
     supportTerms: supportTerms,
     canTravel: canTravel,
     travelerCount: travelerCount,
+    surnameOf: surnameOf,
+    childNameWithFatherSurname: childNameWithFatherSurname,
     install: install
   };
 });
