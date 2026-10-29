@@ -221,7 +221,7 @@ test('the new real-life scenario pack contains at least 150 unique one-time even
   assert.equal(new Set(ids).size, ids.length, 'scenario IDs must be unique');
   assert.equal(new Set(titles).size, titles.length, 'scenario titles must be unique');
   assert.ok(scenarios.every(event => event.once === true), 'each new scenario must only happen once per life');
-  assert.ok(scenarios.every(event => event.weight > 0 && event.minAge >= 0 && event.maxAge >= event.minAge && event.maxAge <= 110));
+  assert.ok(scenarios.every(event => event.weight > 0 && event.minAge >= 2 && event.maxAge >= event.minAge && event.maxAge <= 110), 'supplemental events should not be eligible during infancy');
   assert.ok(scenarios.every(event => ['auto', 'decision'].includes(event.kind)));
   assert.ok(scenarios.some(event => event.cat === 'health'));
   assert.ok(scenarios.some(event => event.cat === 'bad'));
@@ -375,7 +375,8 @@ test('the actual event engine generates varied sequences for different births an
 
   const first = simulate('birth-seed-alpha');
   const second = simulate('birth-seed-beta');
-  assert.ok(first.sequence.length >= 25, 'a long simulated life should still produce a diverse but less crowded story history');
+  assert.ok(first.sequence.length >= 10, 'a long simulated life should still produce a varied but paced story history');
+  assert.ok(first.sequence.length <= 25, 'the four-year scenario cooldown must cap new-pack events over a century');
   assert.equal(new Set(first.sequence.map(record => record.id)).size, first.sequence.length, 'a one-time scenario ID must not repeat within a single life');
   assert.equal(new Set(second.sequence.map(record => record.id)).size, second.sequence.length, 'a second life must also avoid repeats');
   assert.notDeepEqual(first.sequence.slice(0, 20).map(record => record.id), second.sequence.slice(0, 20).map(record => record.id), 'different birth seeds should produce different event histories');
@@ -398,12 +399,12 @@ test('story pacing is at most one event per year, with sparse years and age-appr
   assert.ok(runYear.includes('const milestones = pool.filter'), 'exact-age milestones should be preserved');
   assert.doesNotMatch(runYear, /maxAuto\s*=\s*2/, 'the former two-auto-plus-one-decision pattern must be removed');
   assert.ok(html.includes('s.age < lastScenarioAge + 4'), 'the supplemental scenario pack must have a four-year global cooldown');
-  assert.match(html, /id:'ev_recession'[^\\n]*minAge:16/);
-  assert.match(html, /id:'ev_boom'[^\\n]*minAge:16/);
-  assert.match(html, /id:'ev_inflation_shock'[^\\n]*minAge:16/);
-  assert.match(html, /id:'ev_weather_event'[^\\n]*minAge:4/);
-  assert.match(html, /id:'ev_election_year'[^\\n]*minAge:12/);
-  assert.match(html, /id:'ev_cultural_festival'[^\\n]*minAge:3/);
+  assert.ok(html.includes("id:'ev_recession', cat:'bad', kind:'auto', weight:2, minAge:16"), 'recession effects should begin in the working/older-teen years');
+  assert.ok(html.includes("id:'ev_boom', cat:'money', kind:'auto', weight:2, minAge:16"), 'economic-boom effects should not apply to toddlers');
+  assert.ok(html.includes("id:'ev_inflation_shock', cat:'bad', kind:'auto', weight:2, minAge:16"), 'inflation effects should not apply to toddlers');
+  assert.ok(html.includes("id:'ev_weather_event', cat:'bad', kind:'auto', weight:2, minAge:4"), 'weather disruption should not be logged as a personal event for a newborn');
+  assert.ok(html.includes("id:'ev_election_year', cat:'social', kind:'auto', weight:2, minAge:12"), 'election events should be age-gated');
+  assert.ok(html.includes("id:'ev_cultural_festival', cat:'social', kind:'auto', weight:6, minAge:3"), 'cultural festival participation should be age-gated');
 });
 
 test('the scenario loader runs after built-in events are composed and before the feature module', () => {
