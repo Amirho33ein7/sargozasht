@@ -69,7 +69,7 @@
       ['mobility_24','کم‌شدن تحرک در یک فصل شلوغ','چند ماه پرمشغله باعث شده کمتر حرکت کنی و انرژی‌ات کمی افت کند.',16,100,20,3,3]
     ];
     healthCases.forEach(function (c, i) {
-      var cost = c[6], heal = c[7], worsen = c[8];
+      var cost = c[5], heal = c[6], worsen = c[7];
       add({
         id:'life_health_' + c[0], cat:'health', kind:'decision', weight:2 + (i % 3),
         minAge:c[3], maxAge:c[4],
@@ -189,6 +189,8 @@
     ];
     workCases.forEach(function (w) {
       var type=w[3], cost=w[4], skill=w[5], weight=w[6];
+      var reward = w[0]==='overtime' ? 25 : (w[0]==='small_contract' ? 65 : 0);
+      var expense = reward > 0 ? 0 : cost;
       var ev={id:'life_work_'+w[0],cat:'career',kind:type,weight:weight,minAge:18,maxAge:80,once:true,
         cond:function(s){return !!(s.career&&s.career.employed&&!s.career.retired)||!!(s.econ&&Array.isArray(s.econ.businesses)&&s.econ.businesses.length);},
         title:w[1],text:w[2]};
@@ -196,11 +198,11 @@
         ev.effect={stats:{stress: w[0]==='missed_shift'||w[0]==='client_delay' ? 3 : -1,happiness: w[0]==='client_praise'||w[0]==='bonus'||w[0]==='team_success' ? 3 : 0,jobSat: w[0]==='client_praise'||w[0]==='bonus'||w[0]==='team_success' ? 2 : 0},skills:skill?{technical:Math.min(4,skill)}:{},money:cost?cost:undefined};
       }else{
         ev.choices=[
-          {label:w[0]==='overtime'?'اضافه‌کاری را بپذیر (پاداش مدل)':w[0]==='small_contract'?'پروژه را قبول کن':w[0]==='training'?'در آموزش شرکت کن':'پیگیری و حل مسئله',
-           requires:cost>0?function(s){return hasFunds(s,cost);}:undefined,
-           effect:{money:cost>0?-cost:(w[0]==='overtime'?25:0),stats:{stress:2,energy:-2,jobSat:2},skills:skill?{technical:Math.min(5,skill)}:{}},
+          {label:reward>0 ? 'قبول کن (درآمد حدود '+reward+' دلار مدل)' : (w[0]==='training'?'در آموزش شرکت کن':(expense>0?'پیگیری و حل مسئله (حدود '+expense+' دلار مدل)':'پیگیری و حل مسئله')),
+           requires:expense>0?function(s){return hasFunds(s,expense);}:undefined,
+           effect:{money:reward>0?reward:(expense>0?-expense:0),stats:{stress:2,energy:-2,jobSat:2},skills:skill?{technical:Math.min(5,skill)}:{}},
            result:'موضوع را فعالانه پیگیری کردی؛ مهارت و تجربه‌ات در مدل بازی تغییر کرد.'},
-          {label:w[0]==='overtime'?'اضافه‌کاری را رد کن':'فعلاً با روال فعلی ادامه بده',
+          {label:w[0]==='overtime'||w[0]==='small_contract'?'این بار نپذیر':'فعلاً با روال فعلی ادامه بده',
            effect:{stats:{stress:w[0]==='deadline'?4:-1,energy:1,jobSat:-1}},
            result:'بار اضافه را نپذیرفتی و تلاش کردی تعادل کار و زندگی را حفظ کنی.'}
         ];
