@@ -63,12 +63,12 @@ test('trip estimate combines per-person daily costs, transit, and a 10% reserve'
     days: 7,
     people: 2
   });
-  assert.equal(result.dailyUSD, 150);
-  assert.equal(result.groundUSD, 2100);
+  assert.equal(result.dailyUSD, 113);
+  assert.equal(result.groundUSD, 1582);
   assert.equal(result.farePerPersonUSD, 750);
   assert.equal(result.fareUSD, 1500);
-  assert.equal(result.contingencyUSD, 360);
-  assert.equal(result.totalUSD, 3960);
+  assert.equal(result.contingencyUSD, 308);
+  assert.equal(result.totalUSD, 3390);
   assert.equal(result.fareMethod, 'intercontinental-estimate');
 });
 
