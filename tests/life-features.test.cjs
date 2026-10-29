@@ -218,6 +218,10 @@ test('the original game keeps all inline JavaScript parseable and loads the feat
   assert.ok(html.includes('id="char-avatar"'), 'existing character HUD must remain');
   assert.ok(html.includes('avatarApi.makeAvatarSVG'), 'the original HUD must render the pixel portrait directly');
   assert.ok(html.includes('id="panel-family"'), 'existing family panel must remain');
+  const featureSource = fs.readFileSync(path.join(__dirname, '..', 'life-features.js'), 'utf8');
+  assert.ok(featureSource.includes('var avatarSeedKeys = Object.create(null);'), 'portrait keys must be associated with life identity rather than object identity');
+  assert.ok(featureSource.includes('if (firstEncounter) persist(state);'), 'a portrait seed must be persisted the first time a state object is rendered');
+  assert.doesNotMatch(featureSource, /avatarSeedOwners\\[key\\] && avatarSeedOwners\\[key\\] !== state/, 'resuming a saved life must not force a new portrait just because it is a new JS object');
   const loaderAt = html.indexOf(loader);
   assert.ok(loaderAt > html.lastIndexOf('</script>', loaderAt), 'feature loader should come after inline modules');
 
