@@ -536,10 +536,18 @@
     var esc = U && U.esc ? U.esc : htmlEscape;
     installed = true;
     var avatarSeedSequence = 0;
-    var avatarSeedOwners = Object.create(null);
+    // Track seeds by life identity, not by object reference: resuming a saved life
+    // creates a new JS object but must keep that life’s original portrait.
+    var avatarSeedKeys = Object.create(null);
+    var avatarSeedStates = typeof WeakSet === 'function' ? new WeakSet() : null;
+    var avatarSeedStateList = [];
     function ensureAvatarSeed(state) {
-      var key = state && state.avatarSeed;
-      if (key && avatarSeedOwners[key] && avatarSeedOwners[key] !== state) key = null;
+      if (!state || typeof state !== 'object') return '';
+      var lifeIdentity = String(state.lifeId || state.seed || [
+        state.name && state.name.full || '', state.gender || ''
+      ].join('|'));
+      var key = state.avatarSeed;
+      if (key && Object.prototype.hasOwnProperty.call(avatarSeedKeys, key) && avatarSeedKeys[key] !== lifeIdentity) key = null;
       if (!key) {
         var entropy = '';
         try {
@@ -551,15 +559,23 @@
         } catch (ignoreCrypto) {}
         if (!entropy) entropy = Math.random().toString(36).slice(2) + '-' + Math.random().toString(36).slice(2);
         key = 'avatar-' + Date.now().toString(36) + '-' + (++avatarSeedSequence) + '-' + entropy;
-        while (avatarSeedOwners[key]) key += '-x';
+        while (Object.prototype.hasOwnProperty.call(avatarSeedKeys, key) && avatarSeedKeys[key] !== lifeIdentity) key += '-x';
         state.avatarSeed = key;
       }
-      // The original HUD can assign avatarSeed before this wrapper runs. Persist
-      // every seed on first encounter, not just seeds created by this function.
-      if (avatarSeedOwners[key] !== state) {
-        avatarSeedOwners[key] = state;
-        persist(state);
+      avatarSeedKeys[key] = lifeIdentity;
+      var firstEncounter = false;
+      if (avatarSeedStates) {
+        if (!avatarSeedStates.has(state)) {
+          avatarSeedStates.add(state);
+          firstEncounter = true;
+        }
+      } else if (avatarSeedStateList.indexOf(state) === -1) {
+        avatarSeedStateList.push(state);
+        firstEncounter = true;
       }
+      // The original HUD may assign the seed before this wrapper runs. Persist
+      // on first encounter regardless, including when resuming another JS object.
+      if (firstEncounter) persist(state);
       return key;
     }
 
