@@ -98,6 +98,55 @@ test('same-country trips have a domestic estimate and same-city trips are identi
   assert.equal(sameCity.fareMethod, 'same-city');
 });
 
+test('a male protagonist passes his own surname to every newborn child', () => {
+  const result = feature.childNameWithFatherSurname({
+    gender: 'male',
+    name: { first: 'Amir', last: 'Mohammadi', full: 'Amir Mohammadi' },
+    family: { partner: { gender: 'female', name: 'Sara Karimi' } }
+  }, 'Nika RandomSurname');
+  assert.equal(result.full, 'Nika Mohammadi');
+  assert.equal(result.surname, 'Mohammadi');
+  assert.equal(result.fatherSource, 'player');
+  assert.equal(result.fatherName, 'Amir Mohammadi');
+});
+
+test('a female protagonist uses her male spouse surname for newborn children', () => {
+  const result = feature.childNameWithFatherSurname({
+    gender: 'female',
+    name: { first: 'Sara', last: 'Karimi', full: 'Sara Karimi' },
+    family: { partner: { gender: 'male', name: 'Amir Mohammadi' } }
+  }, 'Nika RandomSurname');
+  assert.equal(result.full, 'Nika Mohammadi');
+  assert.equal(result.surname, 'Mohammadi');
+  assert.equal(result.fatherSource, 'partner');
+  assert.equal(result.fatherName, 'Amir Mohammadi');
+});
+
+test('the newborn surname helper preserves multi-token given names and avoids duplicate surnames', () => {
+  const state = {
+    gender: 'female',
+    name: { first: 'Sara', last: 'Karimi', full: 'Sara Karimi' },
+    family: { partner: { gender: 'male', name: 'Jean de Vries' } }
+  };
+  const regular = feature.childNameWithFatherSurname(state, 'Mary Jane Generated');
+  const alreadyCorrect = feature.childNameWithFatherSurname(state, 'Mary Jane Vries');
+  assert.equal(regular.full, 'Mary Jane Vries');
+  assert.equal(alreadyCorrect.full, 'Mary Jane Vries');
+  assert.equal(regular.surname, 'Vries');
+});
+
+test('child birth code records the helper surname and uses the resulting full name in the birth log', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const lifeYear = html.indexOf('s.flags.tryingBaby && s.family.partner');
+  const birthday = html.indexOf('s.family.children.push({', lifeYear);
+  assert.ok(lifeYear >= 0 && birthday > lifeYear, 'the annual child-birth pipeline must remain present');
+  const excerpt = html.slice(lifeYear, birthday + 650);
+  assert.match(excerpt, /childNameWithFatherSurname\(s,n\.full\)/);
+  assert.match(excerpt, /name:childName\.full,surname:childName\.surname/);
+  assert.match(excerpt, /fatherName:childName\.fatherName/);
+  assert.match(excerpt, /\+childName\.full\+/);
+});
+
 test('parent request changes from pocket money to adult support at age 15', () => {
   const state = {
     age: 14,
