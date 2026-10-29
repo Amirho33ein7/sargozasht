@@ -198,4 +198,6 @@ test('every built-in country has at least one real city available for travel sel
   assert.ok(countryCodes.size >= 190, 'expected broad country coverage in the built-in dataset');
   const missing = [...countryCodes].filter(code => !cityCodes.has(code)).sort();
   assert.deepEqual(missing, [], 'every configured country must have a city option for travel');
+  const missingBudget = [...countryCodes].filter(code => !(code in feature.DAILY_USD_2026) && !['PS', 'XK'].includes(code)).sort();
+  assert.deepEqual(missingBudget, [], 'all available country budgets from the source should be mapped; only destinations absent from the source may use model fallback');
 });
