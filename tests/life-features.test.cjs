@@ -213,7 +213,7 @@ test('party-size calculations exclude deceased family members and avoid double-c
 
 test('the original game keeps all inline JavaScript parseable and loads the feature module last', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  const loader = '<script src="./life-features.js"></script>';
+  const loader = '<script src="./life-features.js?v=20261030-portrait-stable"></script>';
   assert.ok(html.includes(loader), 'game must load the feature script');
   assert.ok(html.includes('id="char-avatar"'), 'existing character HUD must remain');
   assert.ok(html.includes('avatarApi.makeAvatarSVG'), 'the original HUD must render the pixel portrait directly');
