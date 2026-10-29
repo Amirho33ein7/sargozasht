@@ -389,6 +389,16 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   .seo-intro { padding: 16px; }
 }
 
+
+/* قابلیت‌های تکمیلی زندگی: آواتار پیکسلی و پنل پول/سفر */
+.avatar { border-radius: 10px; overflow: hidden; image-rendering: pixelated; }
+.avatar img { display: block; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+.life-feature-subtitle { margin: 12px 0 8px; font-size: .92rem; }
+.life-feature-divider { border-top: 1px solid var(--line); margin: 20px 0; }
+.trip-estimate { background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px; margin-top: 12px; }
+.trip-total { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 8px; color: var(--accent); }
+.trip-total b { font-size: 1.03rem; }
+
 </style>
 </head>
 <body>
@@ -5794,5 +5804,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
 })();
 
 </script>
+<script src="./life-features.js"></script>
 </body>
 </html>
