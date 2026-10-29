@@ -318,6 +318,7 @@ test('the actual event engine generates varied sequences for different births an
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     }
     return {
+      chance(probability) { return next() < probability; },
       weighted(items, weightFn) {
         let total = 0;
         const weights = items.map(item => {
@@ -364,23 +365,50 @@ test('the actual event engine generates varied sequences for different births an
         assert.equal(result.ok, true, 'the first available choice should resolve safely');
       }
     }
-    const sequence = state.events.recent.filter(record => String(record.id).startsWith('life_')).map(record => record.id);
-    const fullSequence = state.log.filter(record => record.evId && String(record.evId).startsWith('life_')).map(record => record.evId);
-    return { state, sequence: fullSequence.length ? fullSequence : sequence };
+    const engineEvents = state.log.filter(record => record.evId);
+    const eventCountsByAge = new Map();
+    engineEvents.forEach(record => eventCountsByAge.set(record.age, (eventCountsByAge.get(record.age) || 0) + 1));
+    assert.ok([...eventCountsByAge.values()].every(count => count <= 1), 'the event engine must not emit multiple story scenarios in one year');
+    const fullSequence = engineEvents.filter(record => record.evId && String(record.evId).startsWith('life_')).map(record => ({ id: record.evId, age: record.age }));
+    return { state, sequence: fullSequence };
   }
 
   const first = simulate('birth-seed-alpha');
   const second = simulate('birth-seed-beta');
-  assert.ok(first.sequence.length >= 40, 'a long simulated life should generate many events from the pool');
-  assert.equal(new Set(first.sequence).size, first.sequence.length, 'a one-time scenario ID must not repeat within a single life');
-  assert.equal(new Set(second.sequence).size, second.sequence.length, 'a second life must also avoid repeats');
-  assert.notDeepEqual(first.sequence.slice(0, 20), second.sequence.slice(0, 20), 'different birth seeds should produce different event histories');
+  assert.ok(first.sequence.length >= 25, 'a long simulated life should still produce a diverse but less crowded story history');
+  assert.equal(new Set(first.sequence.map(record => record.id)).size, first.sequence.length, 'a one-time scenario ID must not repeat within a single life');
+  assert.equal(new Set(second.sequence.map(record => record.id)).size, second.sequence.length, 'a second life must also avoid repeats');
+  assert.notDeepEqual(first.sequence.slice(0, 20).map(record => record.id), second.sequence.slice(0, 20).map(record => record.id), 'different birth seeds should produce different event histories');
+  for (const life of [first, second]) {
+    for (let i = 1; i < life.sequence.length; i++) {
+      assert.ok(life.sequence[i].age - life.sequence[i - 1].age >= 4, 'the supplemental 182-scenario pack must have at least a four-year gap');
+    }
+  }
+  assert.ok(!first.sequence.some(record => record.age < 2), 'supplemental scenarios must not fire during infancy');
   assert.ok(first.state.econ.moneyCents > 0, 'scenario handling must leave the simulated economy in a valid numeric state');
+});
+
+
+test('story pacing is at most one event per year, with sparse years and age-appropriate macro events', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const runYearAt = html.indexOf('EV.runYear = function (s, rng) {');
+  const runYearEnd = html.indexOf('EV.choicesAvailable = function', runYearAt);
+  const runYear = html.slice(runYearAt, runYearEnd);
+  assert.ok(runYear.includes("if (!rng.chance(0.62)) return 0;"), 'ordinary years should often have no featured event');
+  assert.ok(runYear.includes('const milestones = pool.filter'), 'exact-age milestones should be preserved');
+  assert.doesNotMatch(runYear, /maxAuto\s*=\s*2/, 'the former two-auto-plus-one-decision pattern must be removed');
+  assert.ok(html.includes('s.age < lastScenarioAge + 4'), 'the supplemental scenario pack must have a four-year global cooldown');
+  assert.match(html, /id:'ev_recession'[^\\n]*minAge:16/);
+  assert.match(html, /id:'ev_boom'[^\\n]*minAge:16/);
+  assert.match(html, /id:'ev_inflation_shock'[^\\n]*minAge:16/);
+  assert.match(html, /id:'ev_weather_event'[^\\n]*minAge:4/);
+  assert.match(html, /id:'ev_election_year'[^\\n]*minAge:12/);
+  assert.match(html, /id:'ev_cultural_festival'[^\\n]*minAge:3/);
 });
 
 test('the scenario loader runs after built-in events are composed and before the feature module', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  const scenarioLoader = '<script src="./life-scenarios.js?v=20261030-life-scenarios-3"></script>';
+  const scenarioLoader = '<script src="./life-scenarios.js?v=20261030-life-scenarios-4"></script>';
   const featureLoader = '<script src="./life-features.js?v=20261030-portrait-stable"></script>';
   const eventsComposed = html.indexOf('LS.events = (LS._eventsA || []).concat(LS._eventsB || []);');
   const scenarioAt = html.indexOf(scenarioLoader);
