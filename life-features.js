@@ -186,6 +186,7 @@
     TM:162,
     TN:63,
     TO:130,
+    TR:65,
     TT:108,
     TV:140,
     TW:70,
@@ -747,10 +748,10 @@
           '<div class="trip-estimate" id="trip-estimate"></div>' +
           '<div class="actions"><button class="btn-primary btn-mini" id="act-take-trip"' + (normalized.cities.length ? '' : ' disabled') + '>رزرو و پرداخت هزینهٔ سفر</button></div>' +
           '<p class="hint">هزینه‌ها به دلار آمریکا محاسبه و سپس به ارز محل زندگی تبدیل می‌شوند. قیمت‌های روزانهٔ منتشرشده هزینهٔ اقامت، غذا، حمل‌ونقل محلی و یک فعالیت را پوشش می‌دهند و شامل پرواز بین‌المللی نیستند.</p>' +
-          '<p class="small muted">منابع: <a href="https://guidese.com/trip-cost-index" target="_blank" rel="noopener noreferrer">شاخص هزینهٔ سفر ۲۰۲۶</a> · ' +
-          '<a href="https://www.explworld.com/tools/budget" target="_blank" rel="noopener noreferrer">شاخص روزانه برای ۲۴۴ مقصد</a> · ' +
+          '<p class="small muted">منابع: <a href="https://www.explworld.com/tools/budget" target="_blank" rel="noopener noreferrer">شاخص هزینهٔ میانهٔ روزانهٔ ۲۰۲۶ برای ۲۴۴ مقصد</a> · ' +
+          '<a href="https://guidese.com/trip-cost-index" target="_blank" rel="noopener noreferrer">شاخص مستقل ۷۲ کشور برای مقایسه</a> · ' +
           '<a href="https://www.budgetyourtrip.com/howitworks.php" target="_blank" rel="noopener noreferrer">روش محاسبهٔ هزینهٔ روزانه</a>. ' +
-          'برای کشورهایی که عدد مستقیم منتشرشده ندارند، هزینهٔ روزانه یک برآورد تکمیلی بر اساس GDP سرانه و منطقه است؛ کرایهٔ رفت‌وآمد هم قیمت زندهٔ بلیت نیست.</p>';
+          'مبنای اصلی هزینهٔ روزانه میانگین ملی است، نه قیمت دقیق هر شهر یا نرخ زنده. فقط مقصدهای فاقد قیمت مستقیم در جدول، برآورد مدل دارند؛ هزینهٔ رفت‌وآمد نیز برآورد است و قیمت زندهٔ بلیت نیست.</p>';
       }
 
       var travelHistory = (state.travelHistory || []).slice().reverse().slice(0, 4);
