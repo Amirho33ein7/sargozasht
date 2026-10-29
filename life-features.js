@@ -28,6 +28,10 @@
     return Math.round(Number(value) || 0);
   }
 
+  function canTravel(state) {
+    return !!state && state.alive !== false && round(state.age) >= 25;
+  }
+
   function hash32(value) {
     var h = 0x811c9dc5;
     var str = String(value == null ? '' : value);
@@ -61,7 +65,7 @@
     var country = character.country || {};
     var city = character.city || {};
     var identity = [
-      character.lifeId || '', character.seed || '', name.full || '',
+      character.avatarSeed || '', character.lifeId || '', character.seed || '', name.full || '',
       name.first || '', name.last || '', character.gender || '',
       country.iso2 || '', city.nameFa || '', character.year == null ? '' : character.year
     ].join('|');
@@ -289,6 +293,29 @@
     var U = LS.U;
     var esc = U && U.esc ? U.esc : htmlEscape;
     installed = true;
+    var avatarSeedSequence = 0;
+    var avatarSeedOwners = Object.create(null);
+    function ensureAvatarSeed(state) {
+      var key = state && state.avatarSeed;
+      if (key && avatarSeedOwners[key] && avatarSeedOwners[key] !== state) key = null;
+      if (!key) {
+        var entropy = '';
+        try {
+          if (root.crypto && typeof root.crypto.getRandomValues === 'function') {
+            var words = new Uint32Array(4);
+            root.crypto.getRandomValues(words);
+            entropy = Array.prototype.join.call(words, '-');
+          }
+        } catch (ignoreCrypto) {}
+        if (!entropy) entropy = Math.random().toString(36).slice(2) + '-' + Math.random().toString(36).slice(2);
+        key = 'avatar-' + Date.now().toString(36) + '-' + (++avatarSeedSequence) + '-' + entropy;
+        while (avatarSeedOwners[key]) key += '-x';
+        state.avatarSeed = key;
+        persist(state);
+      }
+      avatarSeedOwners[key] = state;
+      return key;
+    }
 
     var nav = doc.querySelector('.quick-nav');
     var host = doc.querySelector('.panel-host');
@@ -317,6 +344,7 @@
         var state = App.state;
         var holder = doc.getElementById('char-avatar');
         if (!state || !holder) return;
+        ensureAvatarSeed(state);
         var svg = makeAvatarSVG(state);
         holder.innerHTML = '<img alt="آواتار پیکسلی ' + esc((state.name && state.name.full) || 'شخصیت') +
           '" src="data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg) +
@@ -505,7 +533,7 @@
       }
 
       var travelHtml = '<div class="life-feature-divider"></div><h4 class="life-feature-subtitle">مسافرت</h4>';
-      if (state.age < 25) {
+      if (!canTravel(state)) {
         travelHtml += '<p class="hint">از ۲۵ سالگی به بعد می‌توانی مقصد، مدت سفر و همراهانت را انتخاب کنی. سفر در سن فعلی قفل است.</p>';
       } else {
         var normalized = ensureTravelPlan(state);
@@ -632,7 +660,7 @@
         if (takeButton) takeButton.addEventListener('click', function () {
           var trip = currentTrip();
           if (!trip || !App.state || App.state !== state || !state.alive) return;
-          if (state.age < 25) { App.toast('سفر از ۲۵ سالگی فعال است.', true); return; }
+          if (!canTravel(state)) { App.toast('سفر از ۲۵ سالگی فعال است.', true); return; }
           var count = travelerCount(trip.mode, state);
           var costs = estimateForPlan(state, trip.country, trip.city, trip.days, trip.mode);
           var enough = !LS.Economy || !LS.Economy.hasMoney || LS.Economy.hasMoney(state, costs.totalUSD);
@@ -688,6 +716,7 @@
     dailyCostUSD: dailyCostUSD,
     estimateTripUSD: estimateTripUSD,
     supportTerms: supportTerms,
+    canTravel: canTravel,
     travelerCount: travelerCount,
     install: install
   };
