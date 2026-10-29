@@ -263,6 +263,16 @@ test('scenario costs require enough money, and decision scenarios retain a non-c
   assert.equal(carRepair.cond(state), false, 'vehicle repair events should require a vehicle');
   state.econ.assets = { vehicles: [{ cat: 'car' }] };
   assert.equal(carRepair.cond(state), true);
+
+  state.econ.moneyCents = 100000;
+  const petBill = scenarios.find(event => event.id === 'life_bill_pet_food');
+  assert.ok(petBill);
+  assert.equal(petBill.cond(state), false, 'pet-related bills must require a living pet');
+  state.relationships.pets = [{ alive: true }];
+  assert.equal(petBill.cond(state), true);
+  const cardScenario = scenarios.find(event => event.id === 'life_daily_lost_wallet_card');
+  assert.ok(cardScenario);
+  assert.equal(cardScenario.minAge, 16, 'bank card mishaps must not be offered to young children');
 });
 
 test('the actual event engine generates varied sequences for different births and never repeats a new scenario within a life', () => {
@@ -370,7 +380,7 @@ test('the actual event engine generates varied sequences for different births an
 
 test('the scenario loader runs after built-in events are composed and before the feature module', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  const scenarioLoader = '<script src="./life-scenarios.js?v=20261030-life-scenarios-2"></script>';
+  const scenarioLoader = '<script src="./life-scenarios.js?v=20261030-life-scenarios-3"></script>';
   const featureLoader = '<script src="./life-features.js?v=20261030-portrait-stable"></script>';
   const eventsComposed = html.indexOf('LS.events = (LS._eventsA || []).concat(LS._eventsB || []);');
   const scenarioAt = html.indexOf(scenarioLoader);
