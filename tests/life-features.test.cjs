@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const feature = require('../life-features.js');
+const scenarioPack = require('../life-scenarios.js');
 
 function country(iso2, region, gdpPc) {
   return { iso2, region, gdpPc, fx: 1, currency: 'USD', fa: iso2, en: iso2 };
@@ -209,6 +210,172 @@ test('party-size calculations exclude deceased family members and avoid double-c
   assert.equal(feature.travelerCount('spouse', state), 2);
   assert.equal(feature.travelerCount('children', state), 2);
   assert.equal(feature.travelerCount('family', state), 5);
+});
+
+
+test('the new real-life scenario pack contains at least 150 unique one-time events across life domains', () => {
+  const scenarios = scenarioPack.createScenarios();
+  assert.ok(scenarios.length >= 150, 'expected a large scenario pool, not a small handful');
+  const ids = scenarios.map(event => event.id);
+  const titles = scenarios.map(event => event.title);
+  assert.equal(new Set(ids).size, ids.length, 'scenario IDs must be unique');
+  assert.equal(new Set(titles).size, titles.length, 'scenario titles must be unique');
+  assert.ok(scenarios.every(event => event.once === true), 'each new scenario must only happen once per life');
+  assert.ok(scenarios.every(event => event.weight > 0 && event.minAge >= 0 && event.maxAge >= event.minAge && event.maxAge <= 110));
+  assert.ok(scenarios.every(event => ['auto', 'decision'].includes(event.kind)));
+  assert.ok(scenarios.some(event => event.cat === 'health'));
+  assert.ok(scenarios.some(event => event.cat === 'bad'));
+  assert.ok(scenarios.some(event => event.cat === 'money'));
+  assert.ok(scenarios.some(event => event.cat === 'career'));
+  assert.ok(scenarios.some(event => event.cat === 'edu'));
+  assert.ok(scenarios.some(event => event.cat === 'family'));
+  assert.ok(scenarios.some(event => event.cat === 'social'));
+
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const existingIds = new Set([...html.matchAll(/\bid\s*:\s*['"]([^'"]+)['"]/g)].map(match => match[1]));
+  assert.ok(ids.every(id => !existingIds.has(id)), 'new scenario IDs must not collide with any existing inline identifier');
+});
+
+test('scenario costs require enough money, and decision scenarios retain a non-cost fallback', () => {
+  const scenarios = scenarioPack.createScenarios({ LS: { U: { toLocal: (usd, fx) => Math.round(usd * (fx || 1)) } } });
+  const state = {
+    age: 30, country: { fx: 1 },
+    econ: { moneyCents: 100 },
+    stats: { health: 70 },
+    family: { parents: [], children: [], partner: null, relationshipStatus: 'single' },
+    relationships: { friends: [], pets: [] },
+    career: { employed: false, retired: false },
+    edu: { status: 'none' }
+  };
+  const bill = scenarios.find(event => event.id === 'life_bill_water_bill');
+  assert.ok(bill);
+  assert.equal(bill.cond(state), false, 'an automatic expense must not drive an unaffordable balance lower');
+  state.econ.moneyCents = 100000;
+  assert.equal(bill.cond(state), true);
+
+  state.econ.moneyCents = 100;
+  const healthDecision = scenarios.find(event => event.id === 'life_health_cold_01');
+  assert.ok(healthDecision);
+  assert.equal(healthDecision.choices[0].requires(state), false);
+  assert.equal(healthDecision.choices[1].requires, undefined, 'a free rest/care option must remain available');
+  const carRepair = scenarios.find(event => event.id === 'life_repair_car_battery');
+  assert.ok(carRepair);
+  assert.equal(carRepair.cond(state), false, 'vehicle repair events should require a vehicle');
+  state.econ.assets = { vehicles: [{ cat: 'car' }] };
+  assert.equal(carRepair.cond(state), true);
+});
+
+test('the actual event engine generates varied sequences for different births and never repeats a new scenario within a life', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const marker = html.indexOf('/* سرگذشت — event-engine.js');
+  assert.ok(marker >= 0, 'existing EventEngine source marker must exist');
+  const scriptOpen = html.indexOf('<script>', marker);
+  const codeStart = html.indexOf('(function () {', scriptOpen);
+  const codeEnd = html.indexOf('</script>', codeStart);
+  assert.ok(scriptOpen >= 0 && codeStart > scriptOpen && codeEnd > codeStart, 'event engine script boundaries must be valid');
+  const source = html.slice(codeStart, codeEnd);
+
+  const LS = {
+    U: {
+      clamp(value, min, max) { return Math.max(min, Math.min(max, value)); },
+      toLocal(usd, fx) { return Math.round(usd * (Number(fx) || 1)); }
+    },
+    Economy: {
+      gainUSD(state, usd) { state.econ.moneyCents += Math.round(usd * state.country.fx * 100); },
+      tryPayUSD(state, usd) {
+        const cents = Math.round(usd * state.country.fx * 100);
+        if (state.econ.moneyCents < cents) return null;
+        state.econ.moneyCents -= cents;
+        return cents;
+      }
+    },
+    events: scenarioPack.createScenarios()
+  };
+  const sandbox = vm.createContext({ window: { LS }, console, Math, Number, String, Array, Object, isFinite });
+  new vm.Script(source, { filename: 'index.html:event-engine' }).runInContext(sandbox);
+  const engine = LS.EventEngine;
+  assert.ok(engine && typeof engine.runYear === 'function');
+
+  function makeRng(seed, age) {
+    let h = 2166136261;
+    const input = String(seed) + ':' + String(age);
+    for (let i = 0; i < input.length; i++) h = Math.imul(h ^ input.charCodeAt(i), 16777619);
+    let x = h >>> 0;
+    function next() {
+      x = (x + 0x6D2B79F5) | 0;
+      let t = Math.imul(x ^ (x >>> 15), 1 | x);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    return {
+      weighted(items, weightFn) {
+        let total = 0;
+        const weights = items.map(item => {
+          const weight = Math.max(0, Number(weightFn(item)) || 0);
+          total += weight;
+          return weight;
+        });
+        if (!(total > 0)) return null;
+        let pick = next() * total;
+        for (let i = 0; i < items.length; i++) {
+          pick -= weights[i];
+          if (pick < 0 && weights[i] > 0) return items[i];
+        }
+        return items[items.length - 1] || null;
+      }
+    };
+  }
+
+  function simulate(seed) {
+    const state = {
+      age: 0, year: 2026, alive: true, country: { iso2: 'IR', region: 'asia', fx: 1 },
+      city: { popM: 1 },
+      econ: { moneyCents: 100000000, debtCents: 0, housing: { mode: 'own' }, assets: { vehicles: [{ cat: 'car' }], properties: [] }, businesses: [] },
+      stats: { health: 75, happiness: 55, smarts: 60, social: 55, energy: 70, stress: 20, fame: 0, jobSat: 55 },
+      skills: { analytical: 35, technical: 35, social: 40, language: 30, physical: 40, creative: 40 },
+      flags: {},
+      career: { employed: true, retired: false, performance: 55 },
+      edu: { status: 'high', level: 3, yearsDone: 0 },
+      family: { parents: [{ alive: true, age: 65 }], siblings: [], children: [{ alive: true, age: 9 }], partner: { alive: true, gender: 'female' }, relationshipStatus: 'married' },
+      relationships: { friends: [{ alive: true }], pets: [{ alive: true }] },
+      events: { executed: {}, pending: [], recent: [] },
+      log: []
+    };
+    for (let age = 1; age <= 100; age++) {
+      state.age = age;
+      state.year = 2026 + age;
+      const rng = makeRng(seed, age);
+      engine.runYear(state, rng);
+      while (state.events.pending.length) {
+        const pending = state.events.pending[0];
+        let choiceIndex = pending.choices.findIndex(choice => choice.available);
+        if (choiceIndex < 0) choiceIndex = 0;
+        const result = engine.resolvePending(state, pending.eventId, choiceIndex, rng);
+        assert.equal(result.ok, true, 'the first available choice should resolve safely');
+      }
+    }
+    const sequence = state.events.recent.filter(record => String(record.id).startsWith('life_')).map(record => record.id);
+    const fullSequence = state.log.filter(record => record.evId && String(record.evId).startsWith('life_')).map(record => record.evId);
+    return { state, sequence: fullSequence.length ? fullSequence : sequence };
+  }
+
+  const first = simulate('birth-seed-alpha');
+  const second = simulate('birth-seed-beta');
+  assert.ok(first.sequence.length >= 40, 'a long simulated life should generate many events from the pool');
+  assert.equal(new Set(first.sequence).size, first.sequence.length, 'a one-time scenario ID must not repeat within a single life');
+  assert.equal(new Set(second.sequence).size, second.sequence.length, 'a second life must also avoid repeats');
+  assert.notDeepEqual(first.sequence.slice(0, 20), second.sequence.slice(0, 20), 'different birth seeds should produce different event histories');
+  assert.ok(first.state.econ.moneyCents > 0, 'scenario handling must leave the simulated economy in a valid numeric state');
+});
+
+test('the scenario loader runs after built-in events are composed and before the feature module', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const scenarioLoader = '<script src="./life-scenarios.js?v=20261030-life-scenarios-1"></script>';
+  const featureLoader = '<script src="./life-features.js?v=20261030-portrait-stable"></script>';
+  const eventsComposed = html.indexOf('LS.events = (LS._eventsA || []).concat(LS._eventsB || []);');
+  const scenarioAt = html.indexOf(scenarioLoader);
+  const featureAt = html.indexOf(featureLoader);
+  assert.ok(eventsComposed >= 0 && scenarioAt > eventsComposed && featureAt > scenarioAt, 'the scenario module must register after built-in events and before startup completes');
 });
 
 test('the original game keeps all inline JavaScript parseable and loads the feature module last', () => {
