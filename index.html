@@ -3982,10 +3982,17 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
       if(rng.chance(0.35)){
         delete s.flags.tryingBaby;
         const g=rng.chance(0.5)?'male':'female'; const n=personName(s,rng,g);
-        s.family.children.push({id:U.uid('C'),relation:'child',name:n.full,gender:g,age:0,alive:true,health:U.clamp(rng.gauss(88,5),40,99),rel:60});
+        const childName = R.SargozashtLifeFeatures && R.SargozashtLifeFeatures.childNameWithFatherSurname
+          ? R.SargozashtLifeFeatures.childNameWithFatherSurname(s,n.full)
+          : {full:n.full,surname:''};
+        s.family.children.push({
+          id:U.uid('C'),relation:'child',name:childName.full,surname:childName.surname,
+          surnameSource:childName.fatherSource,fatherName:childName.fatherName,
+          gender:g,age:0,alive:true,health:U.clamp(rng.gauss(88,5),40,99),rel:60
+        });
         if(ECO.hasMoney(s,500)) ECO.tryPayUSD(s,500,'هزینهٔ تولد فرزند');
         s.stats.happiness=U.clamp(s.stats.happiness+12,0,100); s.stats.stress=U.clamp(s.stats.stress+7,0,100);
-        s.log.push({age:s.age,year:s.year,text:(g==='male'?'پسر':'دختر')+'ت («'+n.full+'») به دنیا آمد!',kind:'major'});
+        s.log.push({age:s.age,year:s.year,text:(g==='male'?'پسر':'دختر')+'ت («'+childName.full+'») به دنیا آمد!',kind:'major'});
       }
     }
   };
