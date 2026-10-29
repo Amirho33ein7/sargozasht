@@ -12,6 +12,7 @@ function country(iso2, region, gdpPc) {
 }
 
 test('pixel portraits are deterministic for the same saved life and vary across new lives', () => {
+  const pixelArtwork = svg => svg.slice(svg.indexOf('</metadata>') + '</metadata>'.length);
   const base = {
     name: { full: 'Sample Person', first: 'Sample', last: 'Person' },
     gender: 'female',
@@ -28,12 +29,12 @@ test('pixel portraits are deterministic for the same saved life and vary across 
 
   const portraits = new Set();
   for (let i = 0; i < 300; i++) {
-    portraits.add(feature.makeAvatarSVG({
+    portraits.add(pixelArtwork(feature.makeAvatarSVG({
       ...base,
       lifeId: 'life-' + i,
       avatarSeed: 'portrait-seed-' + i,
       name: { full: 'Person ' + i, first: 'Person', last: String(i) }
-    }));
+    })));
   }
   assert.equal(portraits.size, 300, '300 different simulated lives should generate 300 different portrait images');
 });
