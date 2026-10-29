@@ -22,7 +22,14 @@ test('pixel portraits are deterministic for the same saved life and vary across 
   };
   const one = feature.makeAvatarSVG({ ...base, lifeId: 'life-1', avatarSeed: 'unique-1' });
   const repeat = feature.makeAvatarSVG({ ...base, lifeId: 'life-1', avatarSeed: 'unique-1' });
+  const agedAndMoved = feature.makeAvatarSVG({
+    ...base, lifeId: 'life-1', avatarSeed: 'unique-1', year: 2042,
+    country: { iso2: 'JP', fa: 'ژاپن' }, city: { nameFa: 'توکیو' }
+  });
   assert.equal(one, repeat, 'reloads of a saved life should keep its avatar');
+  assert.equal(one, agedAndMoved, 'aging and moving country/city must not change the same life portrait');
+  const secondBirth = feature.makeAvatarSVG({ ...base, lifeId: 'life-2', avatarSeed: 'unique-2' });
+  assert.notEqual(pixelArtwork(one), pixelArtwork(secondBirth), 'a different birth seed should produce a different portrait even for the same name');
   assert.match(one, /shape-rendering="crispEdges"/);
   assert.match(one, /<metadata>/);
   assert.doesNotMatch(one, /<image\b[^>]*(?:href|xlink:href)=[\"']https?:/i, 'portrait must not embed an externally hosted image');
