@@ -41,9 +41,10 @@ test('pixel portraits are deterministic for the same saved life and vary across 
 
 test('2026 daily travel benchmark is used where published', () => {
   assert.deepEqual(feature.dailyCostUSD(country('DE', 'europe', 52000), { popM: 4 }), {
-    dailyUSD: 150, source: 'published-2026', cityFactor: 1
+    dailyUSD: 113, source: 'published-2026', cityFactor: 1
   });
-  assert.equal(feature.dailyCostUSD(country('JP', 'asia', 33000), { popM: 30 }).dailyUSD, 235);
+  assert.equal(feature.dailyCostUSD(country('JP', 'asia', 33000), { popM: 30 }).dailyUSD, 113);
+  assert.equal(feature.dailyCostUSD(country('IR', 'asia', 4500), { popM: 9 }).dailyUSD, 49);
 });
 
 test('countries without a listed benchmark get a clearly marked bounded estimate', () => {
