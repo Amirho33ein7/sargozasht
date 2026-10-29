@@ -155,7 +155,12 @@
     bills.forEach(function (b) {
       add({
         id:'life_bill_' + b[0], cat:b[6], kind:'auto', weight:b[7], minAge:b[3], maxAge:b[4],
-        cond:fundsCondition(b[5]), title:b[1], text:b[2] + ' مبلغ این رخداد، هزینهٔ مدل بازی است.',
+        cond:function(s){
+          if (!hasFunds(s,b[5])) return false;
+          if (b[0]==='pet_food' || b[0]==='pet_check') return !!(s.relationships&&Array.isArray(s.relationships.pets)&&s.relationships.pets.some(function(p){return p&&p.alive!==false;}));
+          if (b[0]==='child_activity') return !!(s.family&&Array.isArray(s.family.children)&&s.family.children.some(function(c){return c&&c.alive!==false;}));
+          return true;
+        }, title:b[1], text:b[2] + ' مبلغ این رخداد، هزینهٔ مدل بازی است.',
         effect:{money:-b[5],stats:{stress:3,happiness:-1}}
       });
     });
@@ -322,7 +327,8 @@
     ];
     dailyCases.forEach(function(c){
       var type=c[3],cost=c[4],gain=c[5],cat=c[6];
-      var ev={id:'life_daily_'+c[0],cat:cat,kind:type,weight:2,minAge:8,maxAge:110,once:true,title:c[1],text:c[2]};
+      var minAge = (c[0]==='lost_wallet_card' || c[0]==='subscription_renewal' || c[0]==='unexpected_fee' || c[0]==='forgotten_renewal') ? 16 : 8;
+      var ev={id:'life_daily_'+c[0],cat:cat,kind:type,weight:2,minAge:minAge,maxAge:110,once:true,title:c[1],text:c[2]};
       if(type==='auto'){
         ev.effect={money:gain>0?gain:undefined,stats:{happiness:gain>0?2:(cat==='bad'?-1:1),stress:cat==='bad'?2:-1,social:cat==='social'?2:0}};
       }else{
@@ -360,6 +366,13 @@
     ];
     goodCases.forEach(function(c){
       add({id:'life_good_'+c[0],cat:c[6],kind:'auto',weight:2,minAge:c[3],maxAge:c[4],
+        cond:function(s){
+          if (c[0]==='extra_shift' || c[0]==='overtime_bonus' || c[0]==='work_expense_refund') return !!(s.career&&s.career.employed&&!s.career.retired)||!!(s.econ&&Array.isArray(s.econ.businesses)&&s.econ.businesses.length);
+          if (c[0]==='scholarship_help' || c[0]==='course_credit') return !!(s.edu&&(['primary','middle','high','uni','voc'].indexOf(s.edu.status)>=0 || Number(s.edu.level)>=1));
+          if (c[0]==='small_freelance') return Number(s.age)>=16 && !!(s.skills&&(s.skills.technical>=15 || s.skills.creative>=15 || s.skills.analytical>=15));
+          if (c[0]==='family_help') return !!(s.family&&((Array.isArray(s.family.parents)&&s.family.parents.some(function(p){return p&&p.alive!==false;}))||(Array.isArray(s.family.siblings)&&s.family.siblings.some(function(p){return p&&p.alive!==false;}))||(s.family.partner&&s.family.partner.alive!==false)||(Array.isArray(s.family.children)&&s.family.children.some(function(p){return p&&p.alive!==false;}))));
+          return true;
+        },
         title:c[1],text:c[2]+' رخدادهای خوشایند هم ممکن‌اند، اما برای هر زندگی تضمین‌شده نیستند.',
         effect:{money:c[5],stats:{happiness:3,stress:-2,jobSat:c[6]==='career'?2:0},skills:{social:c[6]==='social'?1:0}}});
     });
