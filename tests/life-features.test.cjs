@@ -158,6 +158,7 @@ test('the original game keeps all inline JavaScript parseable and loads the feat
   const loader = '<script src="./life-features.js"></script>';
   assert.ok(html.includes(loader), 'game must load the feature script');
   assert.ok(html.includes('id="char-avatar"'), 'existing character HUD must remain');
+  assert.ok(html.includes('avatarApi.makeAvatarSVG'), 'the original HUD must render the pixel portrait directly');
   assert.ok(html.includes('id="panel-family"'), 'existing family panel must remain');
   const loaderAt = html.indexOf(loader);
   assert.ok(loaderAt > html.lastIndexOf('</script>', loaderAt), 'feature loader should come after inline modules');
