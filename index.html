@@ -2044,13 +2044,13 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   E({ id:'ev_tax_refund', cat:'money', kind:'auto', weight:4, minAge:20, maxAge:70,
     cond:function(s){ return s.career.employed; },
     title:'بازگشت مالیات', text:'اظهارنامه‌ات دقیق بود و کمی مالیات بازگشت.', effect:{money:120, stats:{happiness:+2}} });
-  E({ id:'ev_recession', cat:'bad', kind:'auto', weight:2, minAge:0, maxAge:110, once:false, cooldown:9,
+  E({ id:'ev_recession', cat:'bad', kind:'auto', weight:2, minAge:16, maxAge:110, once:false, cooldown:9,
     title:'رکود اقتصادی منطقه‌ای', text:'بازار کار منطقه سرد شده؛ استخدام سخت‌تر و کسب‌وکارها کم‌فروش‌تر می‌شوند (دو سال).',
     effect:{custom:function(s){ s.flags.econCycle = { dir:'down', until: (s.age||0) + 2 }; }} });
-  E({ id:'ev_boom', cat:'money', kind:'auto', weight:2, minAge:0, maxAge:110, cooldown:10,
+  E({ id:'ev_boom', cat:'money', kind:'auto', weight:2, minAge:16, maxAge:110, cooldown:10,
     title:'رونق اقتصادی', text:'بازار گرم شده؛ استخدام آسان‌تر و فروش کسب‌وکارها بهتر می‌شود (دو سال).',
     effect:{custom:function(s){ s.flags.econCycle = { dir:'up', until: (s.age||0) + 2 }; }} });
-  E({ id:'ev_inflation_shock', cat:'bad', kind:'auto', weight:2, minAge:0, maxAge:110, cooldown:8,
+  E({ id:'ev_inflation_shock', cat:'bad', kind:'auto', weight:2, minAge:16, maxAge:110, cooldown:8,
     title:'تورم جهنده', text:'قیمت‌ها در یک سال جهش کرد؛ هزینه‌های زندگی بالاتر می‌رود.',
     effect:{custom:function(s){ s.flags.inflationThisYear = true; }} });
   E({ id:'ev_savings_goal', cat:'money', kind:'decision', weight:4, minAge:18, maxAge:80, cooldown:18,
@@ -2237,12 +2237,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     title:'حادثهٔ کوچک', text:'در پیاده‌رو زمین خوردی و مچ پایت پیچ خورد.', effect:{stats:{health:-4,money:-30}} });
 
   /* ---- اجتماعی و منطقه ---- */
-  E({ id:'ev_cultural_festival', cat:'social', kind:'auto', weight:6, minAge:1, maxAge:100,
+  E({ id:'ev_cultural_festival', cat:'social', kind:'auto', weight:6, minAge:3, maxAge:100,
     title:'جشن فرهنگی', text:'جشن فرهنگی شهر برگزار شد؛ رنگ، غذا و موسیقی خیابان را گرفت.', effect:{stats:{happiness:+5,fame:+1}} });
-  E({ id:'ev_weather_event', cat:'bad', kind:'auto', weight:2, minAge:0, maxAge:110, cooldown:8,
+  E({ id:'ev_weather_event', cat:'bad', kind:'auto', weight:2, minAge:4, maxAge:110, cooldown:8,
     title:'بلای طبیعی کوچک', text:'طوفان/سیل کوچکی به شهر رسید؛ بعضی روزها به تعطیلی رفت.',
     effect:{money:-80, stats:{stress:+5,happiness:-3}} });
-  E({ id:'ev_election_year', cat:'social', kind:'auto', weight:2, minAge:0, maxAge:110, cooldown:8,
+  E({ id:'ev_election_year', cat:'social', kind:'auto', weight:2, minAge:12, maxAge:110, cooldown:8,
     title:'سال انتخابات', text:'شهر پر از پوستر و سرود انتخاباتی است؛ اقتصاد و خدمات عمومی سوژهٔ همه شده.', effect:{} });
   E({ id:'ev_retirement_choice', cat:'career', kind:'decision', weight:12, minAge:60, maxAge:72,
     cond:function(s){ return s.career.employed && !s.career.retired; },
@@ -3334,6 +3334,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
 
   EV.eligible = function (s, ev) {
     if (s.age < (ev.minAge || 0) || s.age > (ev.maxAge == null ? 120 : ev.maxAge)) return false;
+    if (ev.pack === 'real-life-variety-2026' && s.events) {
+      const lastScenarioAge = Number(s.events.lastLifeScenarioAge);
+      if (Number.isFinite(lastScenarioAge) && s.age < lastScenarioAge + 4) return false;
+    }
     if (!isRepeatableOk(s, ev)) return false;
     if (ev.cond && typeof ev.cond === 'function') {
       try { if (!ev.cond(s)) return false; } catch (e) { return false; }
@@ -3383,37 +3387,56 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   };
 
   /** انتخاب و اجرای رویدادهای یک سال؛ برمی‌گرداند: تعداد تصمیم‌های در انتظار */
+  /** انتخاب و اجرای حداکثر یک رویداد داستانی در هر سال؛ سال‌های عادی همیشه رویداد اجباری ندارند. */
   EV.runYear = function (s, rng) {
     let decisions = 0;
-    if (s.events.executed['__y' + s.age] === undefined) {
-      s.events.executed['__y' + s.age] = { age: s.age, done: true }; // نگهبان ضد پردازش دوگانهٔ یک سال
-      const pool = (LS.events || []).filter(function (e) { return EV.eligible(s, e); });
-      /* رویدادهای خودکار */
-      const autos = pool.filter(function (e) { return e.kind !== 'decision' && e.weight > 0; });
-      const maxAuto = 2;
-      for (let i = 0; i < maxAuto && autos.length; i++) {
-        const ev = rng.weighted(autos, function (e) { return EV.selectionWeight(s, e); });
-        if (!ev) break;
-        autos.splice(autos.indexOf(ev), 1);
-        EV.apply(s, ev, null, rng);
-      }
-      /* رویداد تصمیم‌ساز */
-      const dec = pool.filter(function (e) { return e.kind === 'decision' && e.weight > 0 && EV.choicesAvailable(s, e) > 0; });
-      if (dec.length) {
-        const ev = rng.weighted(dec, function (e) { return EV.selectionWeight(s, e); });
-        if (ev) {
-          s.events.pending.push({
-            eventId: ev.id, title: ev.title, text: typeof ev.text === 'function' ? ev.text(s) : ev.text,
-            cat: ev.cat, age: s.age, year: s.year,
-            choices: ev.choices.map(function (c, i) {
-              let ok = true;
-              if (c.requires) { try { ok = !!c.requires(s); } catch (e2) { ok = false; } }
-              return { idx: i, label: c.label, available: ok };
-            })
-          });
-          decisions++;
-        }
-      }
+    if (!s.events || !s.events.executed) {
+      s.events = s.events || {};
+      s.events.executed = s.events.executed || {};
+    }
+    if (s.events.executed['__y' + s.age] !== undefined) return 0;
+    s.events.executed['__y' + s.age] = { age: s.age, done: true };
+
+    // رویداد تازه‌ای اضافه نکن وقتی تصمیم دیگری (مثلاً پیشنهاد شغلی) منتظر انتخاب است.
+    if (Array.isArray(s.events.pending) && s.events.pending.length) return 0;
+
+    const pool = (LS.events || []).filter(function (e) {
+      return EV.eligible(s, e) && (e.kind !== 'decision' || EV.choicesAvailable(s, e) > 0);
+    });
+    if (!pool.length) return 0;
+
+    // رویدادهای دقیقاً سن‌دار (مثل اولین روز مدرسه) را از دست نده؛
+    // در سال‌های دیگر، فقط در ۶۲٪ سال‌ها یک رویداد برجسته رخ می‌دهد.
+    const milestones = pool.filter(function (e) {
+      return e.once && Number(e.minAge) === Number(s.age) && Number(e.maxAge) === Number(s.age);
+    });
+    let ev = null;
+    if (milestones.length) {
+      ev = rng.weighted(milestones, function (e) { return EV.selectionWeight(s, e); });
+      if (!ev) ev = rng.weighted(milestones, function (e) { return Math.max(1, Number(e.weight) || 1); });
+    } else {
+      if (!rng.chance(0.62)) return 0;
+      ev = rng.weighted(pool, function (e) { return EV.selectionWeight(s, e); });
+    }
+    if (!ev) return 0;
+
+    if (ev.kind === 'decision') {
+      s.events.pending = Array.isArray(s.events.pending) ? s.events.pending : [];
+      s.events.pending.push({
+        eventId: ev.id, title: ev.title, text: typeof ev.text === 'function' ? ev.text(s) : ev.text,
+        cat: ev.cat, age: s.age, year: s.year,
+        choices: ev.choices.map(function (c, i) {
+          let ok = true;
+          if (c.requires) { try { ok = !!c.requires(s); } catch (e2) { ok = false; } }
+          return { idx: i, label: c.label, available: ok };
+        })
+      });
+      // سناریوی تکمیلی باید cooldown خود را از لحظهٔ نمایش تصمیم بگیرد،
+      // نه فقط پس از انتخاب کاربر.
+      if (ev.pack === 'real-life-variety-2026') s.events.lastLifeScenarioAge = s.age;
+      decisions = 1;
+    } else {
+      EV.apply(s, ev, null, rng);
     }
     return decisions;
   };
@@ -3470,6 +3493,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     if (!s.events) s.events = { executed: {}, pending: [] };
     if (!Array.isArray(s.events.recent)) s.events.recent = [];
     s.events.recent.push({ id: ev.id, cat: ev.cat || 'social', age: s.age, year: s.year });
+    if (ev.pack === 'real-life-variety-2026') s.events.lastLifeScenarioAge = s.age;
     if (s.events.recent.length > 36) s.events.recent.splice(0, s.events.recent.length - 36);
     /* ثبت در لاگ */
     s.log.push({ age: s.age, year: s.year, text: ev.title + ' — ' + resultText, kind: eff.cat || ev.cat || 'time', evId: ev.id });
@@ -5841,7 +5865,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
 })();
 
 </script>
-<script src="./life-scenarios.js?v=20261030-life-scenarios-3"></script>
+<script src="./life-scenarios.js?v=20261030-life-scenarios-4"></script>
 <script src="./life-features.js?v=20261030-portrait-stable"></script>
 </body>
 </html>
