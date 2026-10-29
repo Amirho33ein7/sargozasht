@@ -249,13 +249,12 @@
   function makeAvatarSVG(character) {
     character = character || {};
     var name = character.name || {};
-    var country = character.country || {};
-    var city = character.city || {};
-    var identity = [
-      character.avatarSeed || '', character.lifeId || '', character.seed || '', name.full || '',
-      name.first || '', name.last || '', character.gender || '',
-      country.iso2 || '', city.nameFa || '', character.year == null ? '' : character.year
-    ].join('|');
+    // The persisted per-life seed alone defines the portrait. Age, year and location
+    // are mutable simulation fields and must never make a character's face change.
+    var identity = String(character.avatarSeed || [
+      character.lifeId || '', character.seed || '', name.full || '',
+      name.first || '', name.last || '', character.gender || ''
+    ].join('|'));
     var rng = seededRandom(identity);
     var pick = function (arr) { return arr[Math.floor(rng() * arr.length)]; };
     var integer = function (max) { return Math.floor(rng() * max); };
