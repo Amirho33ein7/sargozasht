@@ -24,7 +24,7 @@ test('pixel portraits are deterministic for the same saved life and vary across 
   assert.equal(one, repeat, 'reloads of a saved life should keep its avatar');
   assert.match(one, /shape-rendering="crispEdges"/);
   assert.match(one, /<metadata>/);
-  assert.doesNotMatch(one, /<image\\b[^>]*(?:href|xlink:href)=[\"']https?:/i, 'portrait must not embed an externally hosted image');
+  assert.doesNotMatch(one, /<image\b[^>]*(?:href|xlink:href)=[\"']https?:/i, 'portrait must not embed an externally hosted image');
 
   const portraits = new Set();
   for (let i = 0; i < 300; i++) {
