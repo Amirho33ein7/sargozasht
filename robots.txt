@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://amirho33ein7.github.io/sargozasht/sitemap.xml
