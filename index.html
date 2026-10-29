@@ -5005,7 +5005,37 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     const le = s.country.lifeExp;
     $('life-progress-fill').style.width = Math.min(100, (s.age / (le * 1.25)) * 100) + '%';
     /* کارت شخصیت */
-    $('char-avatar').textContent = s.name.first ? s.name.first.trim().charAt(0) : '?';
+    var avatarBox = $('char-avatar');
+    var avatarApi = window.SargozashtLifeFeatures;
+    if (avatarApi && typeof avatarApi.makeAvatarSVG === 'function') {
+      try {
+        if (!s.avatarSeed) {
+          var avatarRandom = '';
+          try {
+            if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+              var avatarWords = new Uint32Array(4);
+              window.crypto.getRandomValues(avatarWords);
+              avatarRandom = Array.prototype.join.call(avatarWords, '-');
+            }
+          } catch (avatarCryptoError) {}
+          if (!avatarRandom) avatarRandom = Math.random().toString(36).slice(2) + '-' + Date.now().toString(36);
+          s.avatarSeed = 'avatar-' + Date.now().toString(36) + '-' + avatarRandom;
+        }
+        var avatarSvg = avatarApi.makeAvatarSVG(s);
+        avatarBox.innerHTML = '<img alt="آواتار پیکسلی ' + esc(s.name.full || 'شخصیت') +
+          '" src="data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(avatarSvg) +
+          '" width="52" height="52" draggable="false">';
+        avatarBox.title = 'شخصیت پیکسلی ویژهٔ این زندگی';
+        avatarBox.style.borderRadius = '10px';
+        avatarBox.style.overflow = 'hidden';
+        avatarBox.style.imageRendering = 'pixelated';
+        avatarBox.setAttribute('aria-label', 'تصویر پیکسلی ' + (s.name.full || 'شخصیت'));
+      } catch (avatarRenderError) {
+        avatarBox.textContent = s.name.first ? s.name.first.trim().charAt(0) : '?';
+      }
+    } else {
+      avatarBox.textContent = s.name.first ? s.name.first.trim().charAt(0) : '?';
+    }
     $('char-name').textContent = s.name.full;
     $('char-meta').textContent = (s.gender === 'male' ? 'پسر' : 'دختر') + ' · ' + s.country.fa + ' · ' + (s.econClass === 'poor' ? 'کم‌برخوردار' : s.econClass === 'low' ? 'متوسط رو به پایین' : s.econClass === 'middle' ? 'متوسط' : 'مرفه');
     $('char-job').textContent = s.career.employed ? s.career.titleFa : (s.career.retired ? 'بازنشسته' : 'بدون شغل');
