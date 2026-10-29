@@ -180,3 +180,20 @@ test('the original game keeps all inline JavaScript parseable and loads the feat
   assert.ok(parsed >= 15, 'expected to validate the embedded game modules');
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'life-features.js'), 'utf8'), /data-panel="moneytravel"/);
 });
+
+
+test('every built-in country has at least one real city available for travel selection', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const countryStart = html.indexOf('LS._countriesA = [];');
+  const countriesEnd = html.indexOf('LS.countries =', countryStart);
+  const cityStart = html.indexOf('LS._citiesA = [];');
+  const citiesEnd = html.indexOf('LS.cities =', cityStart);
+  assert.ok(countryStart >= 0 && countriesEnd > countryStart, 'country dataset markers must exist');
+  assert.ok(cityStart >= 0 && citiesEnd > cityStart, 'city dataset markers must exist');
+
+  const countryCodes = new Set([...html.slice(countryStart, countriesEnd).matchAll(/\bC\(\s*['"]([A-Z]{2})['"]/g)].map(match => match[1]));
+  const cityCodes = new Set([...html.slice(cityStart, citiesEnd).matchAll(/\bC\(\s*['"]([A-Z]{2})['"]/g)].map(match => match[1]));
+  assert.ok(countryCodes.size >= 190, 'expected broad country coverage in the built-in dataset');
+  const missing = [...countryCodes].filter(code => !cityCodes.has(code)).sort();
+  assert.deepEqual(missing, [], 'every configured country must have a city option for travel');
+});
