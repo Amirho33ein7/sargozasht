@@ -553,9 +553,13 @@
         key = 'avatar-' + Date.now().toString(36) + '-' + (++avatarSeedSequence) + '-' + entropy;
         while (avatarSeedOwners[key]) key += '-x';
         state.avatarSeed = key;
+      }
+      // The original HUD can assign avatarSeed before this wrapper runs. Persist
+      // every seed on first encounter, not just seeds created by this function.
+      if (avatarSeedOwners[key] !== state) {
+        avatarSeedOwners[key] = state;
         persist(state);
       }
-      avatarSeedOwners[key] = state;
       return key;
     }
 
