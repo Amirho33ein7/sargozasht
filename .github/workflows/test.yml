@@ -20,4 +20,4 @@ jobs:
         with:
           node-version: "22"
       - name: Run life feature and inline-script tests
-        run: node --test tests
+        run: node --test tests/*.test.cjs
