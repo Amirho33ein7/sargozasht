@@ -665,3 +665,12 @@ test('sports academy discovery is age-gated, evidence-gated, and offers a valid 
   assert.ok(sportChoices.every(choice => !('money' in choice.effect)), 'family-funded entry must not charge the child balance');
   assert.ok(event.choices.some(choice => /تفریحی/.test(choice.label)), 'a non-professional option should remain available');
 });
+
+
+test('malformed local archive objects are ignored and can be safely replaced', () => {
+  const { SM, localStorage } = makeSaveManagerHarness();
+  localStorage.setItem('sargozasht.archive', JSON.stringify({ not: 'an array' }));
+  assert.deepEqual(Array.from(SM._lsArchiveList()), []);
+  assert.equal(SM._lsArchivePut({ lifeId: 'recovered-life', savedAt: '2026-10-30T00:00:00.000Z' }), true);
+  assert.deepEqual(Array.from(SM._lsArchiveList(), record => record.lifeId), ['recovered-life']);
+});
