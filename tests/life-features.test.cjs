@@ -467,3 +467,158 @@ test('every built-in country has at least one real city available for travel sel
   const missingBudget = [...countryCodes].filter(code => !(code in feature.DAILY_USD_2026) && !['PS', 'XK'].includes(code)).sort();
   assert.deepEqual(missingBudget, [], 'all available country budgets from the source should be mapped; only destinations absent from the source may use model fallback');
 });
+
+
+// ---------- Save manager regression tests ----------
+function makeSaveManagerHarness() {
+  const createStorage = () => {
+    const values = new Map();
+    return {
+      getItem(key) { return values.has(key) ? values.get(key) : null; },
+      setItem(key, value) { values.set(key, String(value)); },
+      removeItem(key) { values.delete(key); },
+      _values: values
+    };
+  };
+  const localStorage = createStorage();
+  const sessionStorage = createStorage();
+  class FakeFileReader {
+    readAsText(file) {
+      this.result = file && file.content;
+      queueMicrotask(() => {
+        if (typeof this.onload === 'function') this.onload();
+      });
+    }
+  }
+  const window = { LS: {} };
+  const context = vm.createContext({ window, localStorage, sessionStorage, FileReader: FakeFileReader });
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const marker = html.indexOf('/* سرگذشت — save-manager.js');
+  const codeStart = html.indexOf('(function () {', marker);
+  const codeEnd = html.indexOf('</script>', codeStart);
+  assert.ok(marker >= 0 && codeStart > marker && codeEnd > codeStart, 'SaveManager module boundaries must exist');
+  new vm.Script(html.slice(codeStart, codeEnd), { filename: 'index.html:save-manager' }).runInContext(context);
+  return { SM: window.LS.SaveManager, localStorage, sessionStorage };
+}
+
+function makeValidSavedLife(lifeId, age = 12, year = 2038) {
+  return {
+    lifeId,
+    alive: true,
+    name: { full: 'Test Person ' + lifeId },
+    gender: 'female',
+    country: { fa: 'ایران', iso2: 'IR', fx: 1 },
+    city: { nameFa: 'تهران' },
+    age,
+    year,
+    history: [{ age: 0, year: year - age }],
+    log: [],
+    econ: { moneyCents: 123456, assets: { vehicles: [], properties: [] }, businesses: [] },
+    stats: { health: 75, happiness: 60 },
+    edu: { status: 'primary' },
+    career: { employed: false, retired: false },
+    family: { parents: [], siblings: [], children: [], partner: null },
+    flags: {},
+    seed: 'save-manager-test',
+    settings: {}
+  };
+}
+
+test('archive listing merges IndexedDB and local fallback records without hiding either source', async () => {
+  const { SM } = makeSaveManagerHarness();
+  const idb = [
+    { lifeId: 'same', savedAt: '2026-10-28T10:00:00.000Z', source: 'idb-old' },
+    { lifeId: 'idb-only', savedAt: '2026-10-27T10:00:00.000Z' }
+  ];
+  const local = [
+    { lifeId: 'same', savedAt: '2026-10-29T10:00:00.000Z', source: 'local-newer' },
+    { lifeId: 'local-only', savedAt: '2026-10-26T10:00:00.000Z' }
+  ];
+  const merged = SM._mergeArchiveLists(idb, local);
+  assert.deepEqual(Array.from(merged, record => record.lifeId).sort(), ['idb-only', 'local-only', 'same']);
+  assert.equal(merged.find(record => record.lifeId === 'same').source, 'local-newer',
+    'the newest same-life archive record should win');
+});
+
+test('archive deletion removes the same life from IndexedDB and local fallback storage', async () => {
+  const { SM, localStorage } = makeSaveManagerHarness();
+  localStorage.setItem('sargozasht.archive', JSON.stringify([
+    { lifeId: 'delete-me', savedAt: '2026-10-30T00:00:00.000Z' },
+    { lifeId: 'keep-me', savedAt: '2026-10-29T00:00:00.000Z' }
+  ]));
+  const removed = [];
+  SM.idbAvailable = true;
+  SM.db = {
+    objectStoreNames: { contains: name => name === 'lives' },
+    transaction() {
+      const tx = {
+        objectStore() {
+          return { delete(id) { removed.push(id); queueMicrotask(() => tx.oncomplete()); } };
+        }
+      };
+      return tx;
+    }
+  };
+  assert.equal(await SM.deleteArchived('delete-me'), true);
+  assert.deepEqual(removed, ['delete-me']);
+  assert.deepEqual(SM._lsArchiveList().map(record => record.lifeId), ['keep-me']);
+});
+
+test('clearing archive clears IndexedDB and the local fallback copy', async () => {
+  const { SM, localStorage } = makeSaveManagerHarness();
+  localStorage.setItem('sargozasht.archive', JSON.stringify([
+    { lifeId: 'fallback-life', savedAt: '2026-10-30T00:00:00.000Z' }
+  ]));
+  let idbCleared = false;
+  SM.idbAvailable = true;
+  SM.db = {
+    objectStoreNames: { contains: name => name === 'lives' },
+    transaction() {
+      const tx = {
+        objectStore() {
+          return { clear() { queueMicrotask(() => { idbCleared = true; tx.oncomplete(); }); } };
+        }
+      };
+      return tx;
+    }
+  };
+  assert.equal(await SM.clearArchive(), true);
+  assert.equal(idbCleared, true);
+  assert.equal(localStorage.getItem('sargozasht.archive'), null);
+});
+
+test('import archives the previously active life, not the life inside the imported file', async () => {
+  const { SM } = makeSaveManagerHarness();
+  const previous = makeValidSavedLife('previous-life');
+  const incoming = makeValidSavedLife('incoming-life', 21, 2047);
+  assert.equal(SM.saveCurrent(previous), true);
+  const payload = {
+    kind: 'sargozasht-save',
+    v: 1,
+    current: { v: 1, state: incoming }
+  };
+  const result = await SM.importFile({ content: JSON.stringify(payload) });
+  assert.equal(result.ok, true);
+  assert.equal(result.archived, true);
+  assert.equal(result.state.lifeId, 'incoming-life');
+  assert.equal(SM.loadCurrent().state.lifeId, 'incoming-life');
+  const archive = await SM.listArchive();
+  assert.deepEqual(Array.from(archive, record => record.lifeId), ['previous-life']);
+});
+
+test('invalid or unsupported imports never overwrite the existing active save', async () => {
+  const { SM } = makeSaveManagerHarness();
+  const previous = makeValidSavedLife('keep-current');
+  assert.equal(SM.saveCurrent(previous), true);
+  const invalidPayloads = [
+    { kind: 'sargozasht-save', v: 1, current: { v: 1, state: { lifeId: 'broken' } } },
+    { kind: 'sargozasht-save', v: 9, current: { v: 9, state: makeValidSavedLife('future-format') } },
+    { kind: 'other-app', v: 1, current: { v: 1, state: makeValidSavedLife('wrong-kind') } },
+    { kind: 'sargozasht-save', v: 1, current: { v: 1, state: Object.assign(makeValidSavedLife('ended-life'), { alive: false }) } }
+  ];
+  for (const payload of invalidPayloads) {
+    const result = await SM.importFile({ content: JSON.stringify(payload) });
+    assert.equal(result.ok, false);
+    assert.equal(SM.loadCurrent().state.lifeId, 'keep-current');
+  }
+});
