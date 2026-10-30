@@ -490,7 +490,7 @@ function makeSaveManagerHarness() {
       });
     }
   }
-  const window = { LS: {} };
+  const window = { LS: {}, localStorage, sessionStorage };
   const context = vm.createContext({ window, localStorage, sessionStorage, FileReader: FakeFileReader });
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const marker = html.indexOf('/* سرگذشت — save-manager.js');
@@ -561,7 +561,7 @@ test('archive deletion removes the same life from IndexedDB and local fallback s
   };
   assert.equal(await SM.deleteArchived('delete-me'), true);
   assert.deepEqual(removed, ['delete-me']);
-  assert.deepEqual(SM._lsArchiveList().map(record => record.lifeId), ['keep-me']);
+  assert.deepEqual(Array.from(SM._lsArchiveList(), record => record.lifeId), ['keep-me']);
 });
 
 test('clearing archive clears IndexedDB and the local fallback copy', async () => {
