@@ -622,3 +622,46 @@ test('invalid or unsupported imports never overwrite the existing active save', 
     assert.equal(SM.loadCurrent().state.lifeId, 'keep-current');
   }
 });
+
+
+test('sports academy discovery is age-gated, evidence-gated, and offers a valid progression choice', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const start = html.indexOf("E({ id:'ev_sports_talent'");
+  const end = html.indexOf("E({ id:'ev_music_talent'", start);
+  assert.ok(start >= 0 && end > start, 'the built-in sports discovery event must exist');
+  const source = html.slice(start, end);
+  const LS = { _eventsA: [] };
+  const sandbox = vm.createContext({ LS });
+  sandbox.E = event => LS._eventsA.push(event);
+  new vm.Script(source, { filename: 'index.html:sports-discovery-event' }).runInContext(sandbox);
+  const event = LS._eventsA[0];
+  assert.equal(event.id, 'ev_sports_talent');
+  assert.equal(event.kind, 'decision');
+  assert.equal(event.minAge, 8);
+  assert.equal(event.maxAge, 15);
+
+  const state = {
+    age: 8,
+    flags: {},
+    skills: { physical: 42 },
+    focus: { years: { exercise: 0 } }
+  };
+  assert.equal(event.cond(state), false, 'without physical progress or sustained exercise, the invitation is not forced');
+  state.skills.physical = 43;
+  assert.equal(event.cond(state), true, 'strong physical skill should qualify');
+  state.skills.physical = 42;
+  state.focus.years.exercise = 2;
+  assert.equal(event.cond(state), true, 'two years of exercise focus should qualify');
+  state.age = 16;
+  assert.equal(event.cond(state), false, 'the discovery window should close after age 15');
+  state.age = 12;
+  state.flags.sportPath = true;
+  assert.equal(event.cond(state), false, 'a life already committed to a sports path should not receive a duplicate invitation');
+
+  const sportChoices = event.choices.filter(choice => choice.effect && choice.effect.flags && choice.effect.flags.sportPath);
+  assert.equal(sportChoices.length, 7, 'seven supported sport disciplines should be offered');
+  assert.ok(sportChoices.every(choice => choice.effect.flags.sportAcademy === true));
+  assert.ok(sportChoices.every(choice => choice.effect.skills.physical === 10));
+  assert.ok(sportChoices.every(choice => !('money' in choice.effect)), 'family-funded entry must not charge the child's personal balance');
+  assert.ok(event.choices.some(choice => /تفریحی/.test(choice.label)), 'a non-professional option should remain available');
+});
