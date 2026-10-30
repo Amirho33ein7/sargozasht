@@ -662,6 +662,6 @@ test('sports academy discovery is age-gated, evidence-gated, and offers a valid 
   assert.equal(sportChoices.length, 7, 'seven supported sport disciplines should be offered');
   assert.ok(sportChoices.every(choice => choice.effect.flags.sportAcademy === true));
   assert.ok(sportChoices.every(choice => choice.effect.skills.physical === 10));
-  assert.ok(sportChoices.every(choice => !('money' in choice.effect)), 'family-funded entry must not charge the child's personal balance');
+  assert.ok(sportChoices.every(choice => !('money' in choice.effect)), 'family-funded entry must not charge the child balance');
   assert.ok(event.choices.some(choice => /تفریحی/.test(choice.label)), 'a non-professional option should remain available');
 });
