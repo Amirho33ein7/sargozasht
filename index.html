@@ -623,6 +623,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     <div class="report-actions">
       <button id="btn-report-lives" class="btn-secondary">آرشیو زندگی‌ها</button>
       <button id="btn-report-export" class="btn-secondary">خروجی این زندگی</button>
+      <button id="btn-report-retry-archive" class="btn-secondary" hidden>تلاش دوباره برای ذخیره در آرشیو</button>
       <button id="btn-report-new" class="btn-primary">زندگی جدید</button>
     </div>
   </div>
@@ -5082,15 +5083,24 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     App.engine && App.engine.pause('ended');
     const report = LS.LifeEngine.buildReport(s);
     App.lastReport = report;
-    Promise.resolve(LS.SaveManager.archiveLife(s, report)).catch(function (err) {
-      if (typeof console !== 'undefined') console.error('[SaveManager] archive failed:', err);
-      App.toast('گزارش ساخته شد، اما ذخیرهٔ آرشیو با مشکل روبه‌رو شد.', true);
-      return false;
-    }).then(function () {
+    App.archivePending = false;
+    const showReport = function (archived) {
       App.renderReport(report);
       App.showScreen('screen-report');
-      LS.SaveManager.clearCurrent();
       App.refreshPastMini();
+      const retry = $('btn-report-retry-archive');
+      if (archived === false) {
+        App.archivePending = true;
+        if (retry) retry.hidden = false;
+        App.toast('گزارش آماده است، اما آرشیو ذخیره نشد. برای جلوگیری از ازدست‌رفتن زندگی، ذخیرهٔ قبلی پاک نشده؛ خروجی بگیر یا دوباره تلاش کن.', true);
+        return;
+      }
+      if (retry) retry.hidden = true;
+      LS.SaveManager.clearCurrent();
+    };
+    Promise.resolve(LS.SaveManager.archiveLife(s, report)).then(showReport).catch(function (err) {
+      if (typeof console !== 'undefined') console.error('[SaveManager] archive failed:', err);
+      showReport(false);
     });
   };
 
@@ -5339,12 +5349,18 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
         { label: 'ورود فایل ذخیره', fn: App.importFlow },
         { label: 'آرشیو زندگی‌ها', fn: function () { App.openLives(); } },
         { label: 'بازگشت به صفحهٔ شروع', danger: true, fn: function () {
-          LS.SaveManager.archiveLife(s, null).then(function () {
+          LS.SaveManager.archiveLife(s, null).then(function (archived) {
+            if (archived === false) {
+              App.toast('آرشیو ذخیره نشد؛ برای جلوگیری از حذف پیشرفت، از زندگی خارج نشدی.', true);
+              return;
+            }
             LS.SaveManager.clearCurrent();
             App.engine && App.engine.pause('abandoned');
             App.state = null;
             App.refreshPastMini();
             App.showScreen('screen-start');
+          }).catch(function () {
+            App.toast('آرشیو ذخیره نشد؛ ذخیرهٔ فعلی پاک نشده است.', true);
           });
         } },
         { label: 'بستن', primary: true }
@@ -5462,7 +5478,31 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
         { label: 'انصراف', primary: true }
       ]);
     });
-    $('btn-report-new').addEventListener('click', function () { App.state = null; App.refreshPastMini(); App.showScreen('screen-start'); });
+    $('btn-report-retry-archive').addEventListener('click', function () {
+      if (!App.archivePending || !App.state || App.state.alive !== false) return;
+      LS.SaveManager.archiveLife(App.state, App.lastReport).then(function (archived) {
+        if (archived === false) {
+          App.toast('ذخیرهٔ آرشیو هنوز ناموفق است؛ فایل خروجی را نگه دار.', true);
+          return;
+        }
+        App.archivePending = false;
+        $('btn-report-retry-archive').hidden = true;
+        LS.SaveManager.clearCurrent();
+        App.refreshPastMini();
+        App.toast('زندگی با موفقیت در آرشیو ذخیره شد.');
+      }).catch(function () {
+        App.toast('تلاش دوباره برای آرشیو ناموفق بود؛ فایل خروجی را نگه دار.', true);
+      });
+    });
+    $('btn-report-new').addEventListener('click', function () {
+      if (App.archivePending) {
+        App.toast('این زندگی هنوز آرشیو نشده است؛ اول خروجی بگیر یا ذخیرهٔ آرشیو را دوباره امتحان کن.', true);
+        return;
+      }
+      App.state = null;
+      App.refreshPastMini();
+      App.showScreen('screen-start');
+    });
     $('btn-report-lives').addEventListener('click', App.openLives);
     $('btn-report-export').addEventListener('click', function () {
       if (App.state) LS.SaveManager.exportFile(App.state, App.lastReport);
