@@ -4491,8 +4491,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
 
   SM._lsArchivePut = function (rec) {
     try {
-      const arr = SM._safeParse(localStorage.getItem(SM.LS_ARCHIVE)) || [];
-      const i = arr.findIndex(function (x) { return x.lifeId === rec.lifeId; });
+      if (!rec || typeof rec.lifeId !== 'string' || !rec.lifeId.trim()) return false;
+      const stored = SM._safeParse(localStorage.getItem(SM.LS_ARCHIVE));
+      const arr = Array.isArray(stored) ? stored : [];
+      const i = arr.findIndex(function (x) { return x && x.lifeId === rec.lifeId; });
       if (i >= 0) arr[i] = rec; else arr.push(rec);
       if (arr.length > 60) arr.splice(0, arr.length - 60); // سقف آرشیو محلی
       localStorage.setItem(SM.LS_ARCHIVE, JSON.stringify(arr));
@@ -4538,7 +4540,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   };
 
   SM._lsArchiveList = function () {
-    const arr = SM._safeParse((function () { try { return localStorage.getItem(SM.LS_ARCHIVE); } catch (e) { return null; } })()) || [];
+    const stored = SM._safeParse((function () { try { return localStorage.getItem(SM.LS_ARCHIVE); } catch (e) { return null; } })());
+    const arr = Array.isArray(stored) ? stored.filter(function (record) {
+      return !!(record && typeof record.lifeId === 'string' && record.lifeId.trim());
+    }) : [];
     return arr.sort(function (a, b) { return (b.savedAt || '').localeCompare(a.savedAt || ''); });
   };
 
@@ -4566,11 +4571,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   };
   SM._lsArchiveDelete = function (lifeId) {
     try {
-      const arr = SM._safeParse(localStorage.getItem(SM.LS_ARCHIVE)) || [];
-      const out = arr.filter(function (x) { return x.lifeId !== lifeId; });
+      const stored = SM._safeParse(localStorage.getItem(SM.LS_ARCHIVE));
+      const arr = Array.isArray(stored) ? stored : [];
+      const out = arr.filter(function (x) { return !x || x.lifeId !== lifeId; });
       localStorage.setItem(SM.LS_ARCHIVE, JSON.stringify(out));
       return true;
-    } catch (e) { return false; }
+    } catch (e) { SM.lastError = e && e.message; return false; }
   };
 
   SM.clearArchive = function () {
@@ -5416,7 +5422,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
           const id = b.closest('.life-item').getAttribute('data-id');
           if (b.getAttribute('data-act') === 'del') {
             App.modal('حذف زندگی', '<p>آیا از حذف دائمی «' + esc(id) + '» مطمئنی؟ این عمل بازگشت‌پذیر نیست.</p>', [
-              { label: 'حذف کن', danger: true, fn: function () { LS.SaveManager.deleteArchived(id).then(function () { App.toast('حذف شد.'); App.openLives(); App.refreshPastMini(); }); } },
+              { label: 'حذف کن', danger: true, fn: function () { LS.SaveManager.deleteArchived(id).then(function (ok) { App.toast(ok ? 'حذف شد.' : 'حذف زندگی ناموفق بود؛ آرشیو کامل پاک نشده است.', !ok); if (ok) { App.openLives(); App.refreshPastMini(); } }); } },
               { label: 'انصراف', primary: true }
             ]);
           } else {
@@ -5452,7 +5458,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     $('btn-lives-back').addEventListener('click', function () { App.showScreen(App.state ? 'screen-life' : 'screen-start'); });
     $('btn-lives-clear').addEventListener('click', function () {
       App.modal('پاک‌کردن کل آرشیو', '<p>همهٔ زندگی‌های آرشیوشده برای همیشه حذف می‌شوند. مطمئنی؟</p>', [
-        { label: 'بله، همه پاک شود', danger: true, fn: function () { LS.SaveManager.clearArchive().then(function () { App.toast('آرشیو پاک شد.'); App.openLives(); App.refreshPastMini(); }); } },
+        { label: 'بله، همه پاک شود', danger: true, fn: function () { LS.SaveManager.clearArchive().then(function (ok) { App.toast(ok ? 'آرشیو پاک شد.' : 'پاک‌کردن آرشیو کامل نشد؛ داده‌ای را با موفقیت تأیید نمی‌کنم.', !ok); if (ok) { App.openLives(); App.refreshPastMini(); } }); } },
         { label: 'انصراف', primary: true }
       ]);
     });
