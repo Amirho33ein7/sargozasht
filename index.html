@@ -4437,8 +4437,31 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     try { return JSON.parse(raw); } catch (e) { return null; }
   };
 
+  /* ---------- اعتبارسنجی ساختار زندگی ---------- */
+  SM._isValidSaveState = function (state) {
+    if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
+    if (typeof state.lifeId !== 'string' || !state.lifeId.trim() || state.lifeId.length > 180) return false;
+    if (!state.name || typeof state.name.full !== 'string' || !state.name.full.trim()) return false;
+    if (!state.country || typeof state.country.iso2 !== 'string' || !/^[A-Z]{2}$/i.test(state.country.iso2)) return false;
+    if (!state.city || typeof state.city.nameFa !== 'string' || !state.city.nameFa.trim()) return false;
+    if (typeof state.age !== 'number' || !Number.isFinite(state.age) || state.age < 0 || state.age > 130) return false;
+    if (typeof state.year !== 'number' || !Number.isFinite(state.year)) return false;
+    if (typeof state.alive !== 'boolean') return false;
+    if (!Array.isArray(state.history) || !Array.isArray(state.log)) return false;
+    const objects = ['econ', 'stats', 'edu', 'career', 'family', 'flags'];
+    for (let i = 0; i < objects.length; i++) {
+      const value = state[objects[i]];
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    }
+    return true;
+  };
+
   /* ---------- آرشیو زندگی‌ها ---------- */
   SM.archiveLife = function (state, report) {
+    if (!SM._isValidSaveState(state)) {
+      SM.lastError = 'ساختار زندگی برای آرشیو معتبر نیست';
+      return Promise.resolve(false);
+    }
     const rec = {
       lifeId: state.lifeId, savedAt: new Date().toISOString(), ended: !state.alive,
       name: state.name.full, gender: state.gender,
@@ -4477,8 +4500,26 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     } catch (e) { SM.lastError = e && e.message; return false; }
   };
 
+  SM._mergeArchiveLists = function (primary, fallback) {
+    const byId = Object.create(null);
+    const add = function (records) {
+      if (!Array.isArray(records)) return;
+      records.forEach(function (record) {
+        if (!record || typeof record.lifeId !== 'string' || !record.lifeId.trim()) return;
+        const old = byId[record.lifeId];
+        const stamp = Date.parse(record.savedAt || '') || 0;
+        const oldStamp = old ? (Date.parse(old.savedAt || '') || 0) : -1;
+        if (!old || stamp > oldStamp) byId[record.lifeId] = record;
+      });
+    };
+    add(primary);
+    add(fallback);
+    return Object.keys(byId).map(function (id) { return byId[id]; })
+      .sort(function (a, b) { return (b.savedAt || '').localeCompare(a.savedAt || ''); });
+  };
+
   SM.listArchive = function () {
-    if (SM.idbAvailable) {
+    if (SM.idbAvailable && SM.db && SM.db.objectStoreNames.contains('lives')) {
       return new Promise(function (resolve) {
         try {
           const out = [];
@@ -4487,13 +4528,13 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
           req.onsuccess = function (e) {
             const cur = e.target.result;
             if (cur) { out.push(cur.value); cur.continue(); }
-            else resolve(out.sort(function (a, b) { return (b.savedAt || '').localeCompare(a.savedAt || ''); }));
+            else resolve(SM._mergeArchiveLists(out, SM._lsArchiveList()));
           };
-          req.onerror = function () { resolve(SM._lsArchiveList()); };
-        } catch (e) { resolve(SM._lsArchiveList()); }
+          req.onerror = function () { resolve(SM._mergeArchiveLists([], SM._lsArchiveList())); };
+        } catch (e) { resolve(SM._mergeArchiveLists([], SM._lsArchiveList())); }
       });
     }
-    return Promise.resolve(SM._lsArchiveList());
+    return Promise.resolve(SM._mergeArchiveLists([], SM._lsArchiveList()));
   };
 
   SM._lsArchiveList = function () {
@@ -4508,15 +4549,18 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   };
 
   SM.deleteArchived = function (lifeId) {
-    if (SM.idbAvailable) {
+    if (SM.idbAvailable && SM.db && SM.db.objectStoreNames.contains('lives')) {
       return new Promise(function (resolve) {
         try {
           const tx = SM.db.transaction('lives', 'readwrite');
           tx.objectStore('lives').delete(lifeId);
           tx.oncomplete = function () { resolve(true); };
-          tx.onerror = function () { resolve(false); };
+          tx.onerror = tx.onabort = function () { resolve(false); };
         } catch (e) { resolve(false); }
-      }).then(function () { SM._lsArchiveDelete(lifeId); return true; });
+      }).then(function (ok) {
+        if (!ok) return false;
+        return SM._lsArchiveDelete(lifeId);
+      });
     }
     return Promise.resolve(SM._lsArchiveDelete(lifeId));
   };
@@ -4530,17 +4574,27 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
   };
 
   SM.clearArchive = function () {
-    if (SM.idbAvailable) {
+    const clearLocalArchive = function () {
+      try { localStorage.removeItem(SM.LS_ARCHIVE); return true; }
+      catch (e) { SM.lastError = e && e.message || 'پاک‌کردن آرشیو محلی ناموفق بود'; return false; }
+    };
+    if (SM.idbAvailable && SM.db && SM.db.objectStoreNames.contains('lives')) {
       return new Promise(function (resolve) {
         try {
           const tx = SM.db.transaction('lives', 'readwrite');
           tx.objectStore('lives').clear();
-          tx.oncomplete = function () { resolve(true); };
-          tx.onerror = function () { resolve(false); };
-        } catch (e) { resolve(false); }
+          tx.oncomplete = function () { resolve(clearLocalArchive()); };
+          tx.onerror = tx.onabort = function () {
+            SM.lastError = 'پاک‌کردن آرشیو IndexedDB ناموفق بود';
+            resolve(false);
+          };
+        } catch (e) {
+          SM.lastError = e && e.message || 'پاک‌کردن آرشیو ناموفق بود';
+          resolve(false);
+        }
       });
     }
-    try { localStorage.removeItem(SM.LS_ARCHIVE); return Promise.resolve(true); } catch (e) { return Promise.resolve(false); }
+    return Promise.resolve(clearLocalArchive());
   };
 
   /* ---------- خروجی / ورود فایل ---------- */
@@ -4560,27 +4614,61 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
     return true;
   };
 
-  /** ورود فایل: برمی‌گرداند {ok, state?, archived?, why?} — آرشیو قبلی پاک نمی‌شود */
+  /** ورود امن فایل: زندگی فعلی آرشیو می‌شود، نه زندگی داخل فایل. */
   SM.importFile = function (file) {
     return new Promise(function (resolve) {
-      const reader = new FileReader();
-      reader.onerror = function () { resolve({ ok: false, why: 'خواندن فایل ناموفق بود' }); };
+      let finished = false;
+      const finish = function (result) {
+        if (finished) return;
+        finished = true;
+        resolve(result);
+      };
+      if (!file) { finish({ ok: false, why: 'فایلی انتخاب نشده است' }); return; }
+
+      let reader;
+      try { reader = new FileReader(); }
+      catch (e) { finish({ ok: false, why: 'امکان خواندن فایل در این مرورگر وجود ندارد' }); return; }
+
+      reader.onerror = function () { finish({ ok: false, why: 'خواندن فایل ناموفق بود' }); };
+      reader.onabort = function () { finish({ ok: false, why: 'خواندن فایل لغو شد' }); };
       reader.onload = function () {
         const data = SM._safeParse(reader.result);
-        if (!data || data.kind !== 'sargozasht-save') { resolve({ ok: false, why: 'این فایل ذخیرهٔ سرگذشت نیست' }); return; }
-        if (!data.v || data.v > SM.SCHEMA_VERSION) { resolve({ ok: false, why: 'نسخهٔ فایل با این بازی سازگار نیست' }); return; }
-        let archived = false;
-        if (data.current && data.current.state) {
-          SM.archiveLife(data.current.state, null).then(function () {
-            SM.saveCurrent(data.current.state);
-            resolve({ ok: true, state: data.current.state, archived: true });
-          });
-          archived = true;
-        } else {
-          resolve({ ok: false, why: 'فایل حاوی زندگی فعالی نیست' });
+        if (!data || data.kind !== 'sargozasht-save') {
+          finish({ ok: false, why: 'این فایل ذخیرهٔ سرگذشت نیست' });
+          return;
         }
+        if (data.v !== SM.SCHEMA_VERSION) {
+          finish({ ok: false, why: 'نسخهٔ فایل با این بازی سازگار نیست' });
+          return;
+        }
+        const imported = data.current && data.current.state;
+        if (!data.current || data.current.v !== SM.SCHEMA_VERSION || !SM._isValidSaveState(imported) || imported.alive !== true) {
+          finish({ ok: false, why: 'فایل، زندگی فعال و سالمی برای ادامه ندارد' });
+          return;
+        }
+
+        SM.loadCurrentAsync().then(function (loaded) {
+          const previous = loaded && loaded.state;
+          const shouldArchive = !!(previous && previous.alive === true && previous.lifeId !== imported.lifeId);
+          const archiveStep = shouldArchive ? SM.archiveLife(previous, null) : Promise.resolve(true);
+          return Promise.resolve(archiveStep).then(function (archived) {
+            if (archived === false) {
+              finish({ ok: false, why: 'آرشیو زندگی فعلی ناموفق بود؛ ذخیرهٔ قبلی دست‌نخورده باقی ماند' });
+              return;
+            }
+            if (!SM.saveCurrent(imported)) {
+              finish({ ok: false, why: SM.lastError || 'ذخیرهٔ فایل واردشده ناموفق بود' });
+              return;
+            }
+            finish({ ok: true, state: imported, archived: shouldArchive });
+          });
+        }).catch(function (e) {
+          finish({ ok: false, why: e && e.message ? 'ورود فایل ناموفق بود: ' + e.message : 'ورود فایل ناموفق بود' });
+        });
       };
-      reader.readAsText(file);
+
+      try { reader.readAsText(file); }
+      catch (e) { finish({ ok: false, why: 'بازکردن فایل ناموفق بود' }); }
     });
   };
 
@@ -5264,7 +5352,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focu
       const f = input.files[0]; if (!f) return;
       LS.SaveManager.importFile(f).then(function (res) {
         if (!res.ok) { App.toast(res.why || 'ورود ناموفق بود', true); return; }
-        App.toast('فایل ذخیره وارد شد؛ زندگی فعلی به آرشیو منتقل شد.');
+        App.toast(res.archived ? 'فایل ذخیره وارد شد؛ زندگی قبلی به آرشیو منتقل شد.' : 'فایل ذخیره وارد شد و آمادهٔ ادامه است.');
         $('btn-resume').hidden = false;
         $('btn-resume').textContent = 'ادامهٔ زندگی وارد‌شده (' + res.state.name.full + ')';
         App.refreshPastMini();
