@@ -674,3 +674,25 @@ test('malformed local archive objects are ignored and can be safely replaced', (
   assert.equal(SM._lsArchivePut({ lifeId: 'recovered-life', savedAt: '2026-10-30T00:00:00.000Z' }), true);
   assert.deepEqual(Array.from(SM._lsArchiveList(), record => record.lifeId), ['recovered-life']);
 });
+
+
+test('archive failures do not clear current saves or silently start a new life', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const deathStart = html.indexOf('App.onDeath = function (s) {');
+  const deathEnd = html.indexOf('/* ---------------- HUD ---------------- */', deathStart);
+  assert.ok(deathStart >= 0 && deathEnd > deathStart);
+  const deathHandler = html.slice(deathStart, deathEnd);
+  assert.match(deathHandler, /if \(archived === false\)/);
+  assert.match(deathHandler, /App\.archivePending = true/);
+  assert.match(deathHandler, /LS\.SaveManager\.clearCurrent\(\)/);
+
+  const returnStart = html.indexOf("{ label: 'بازگشت به صفحهٔ شروع'");
+  const returnEnd = html.indexOf("{ label: 'بستن'", returnStart);
+  const returnHandler = html.slice(returnStart, returnEnd);
+  assert.match(returnHandler, /if \(archived === false\)/);
+  assert.ok(returnHandler.indexOf("if (archived === false)") < returnHandler.indexOf("LS.SaveManager.clearCurrent()"),
+    'the active save may be cleared only after archive success');
+
+  assert.match(html, /id="btn-report-retry-archive"/);
+  assert.match(html, /if \(App\.archivePending\)/, 'a new life must not silently overwrite a life whose archive failed');
+});
